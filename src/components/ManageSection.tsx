@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import * as Dialog from '@radix-ui/react-dialog';
 import { Trash2 } from 'lucide-react';
-import { maskBackupFilename, getBackupFileTitle } from '../utils/username-masking';
+import { maskBackupFilename } from '../utils/username-masking';
+import { StandardTooltip } from './ui/tooltip';
 
 const ManageSection = ({ backups, showStatus, onRefresh }) => {
   const [isClearDialogOpen, setIsClearDialogOpen] = useState(false);
@@ -104,18 +105,17 @@ const ManageSection = ({ backups, showStatus, onRefresh }) => {
           ) : (
             backups.map((backup, index) => (
               <div key={`${backup}-${index}`} className="backup-item-vertical">
-                <span
-                  className="backup-name"
-                  title={getBackupFileTitle(backup)}
-                >
-                  {maskBackupFilename(backup)}
-                </span>
+                <StandardTooltip content={backup} side="bottom">
+                  <span className="backup-name">
+                    {maskBackupFilename(backup)}
+                  </span>
+                </StandardTooltip>
                 <div className="flex gap-2">
                   <button
                     className="btn btn-primary px-2 py-1 text-xs"
                     onClick={() => handleSwitchAccount(backup)}
                     disabled={switchingAccount === backup}
-                    title="切换到此用户"
+                    title="切换到此用户并自动启动 Antigravity"
                   >
                     {switchingAccount === backup ? '切换中...' : '切换'}
                   </button>

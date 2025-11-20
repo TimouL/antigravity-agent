@@ -37,7 +37,13 @@ const PasswordDialog: React.FC<PasswordDialogProps> = ({
     // 清除之前的错误
     setValidationError('');
 
-    // 密码验证
+    // 基本密码验证：确保密码不为空
+    if (!password.trim()) {
+      setValidationError('请输入密码');
+      return;
+    }
+
+    // 自定义密码验证
     if (validatePassword) {
       const validation = validatePassword(password);
       if (!validation.isValid) {
@@ -65,7 +71,8 @@ const PasswordDialog: React.FC<PasswordDialogProps> = ({
     onCancel();
   };
 
-  const isValid = (!validatePassword || validatePassword(password).isValid) &&
+  const isValid = password.trim() !== '' &&
+                  (!validatePassword || validatePassword(password).isValid) &&
                   (!requireConfirmation || password === confirmPassword);
 
   return (
@@ -86,36 +93,34 @@ const PasswordDialog: React.FC<PasswordDialogProps> = ({
 
           <form onSubmit={handleSubmit} className="p-6 pt-0">
             <div className="space-y-4">
-              {/* 只在需要密码时显示密码输入 */}
-              {validatePassword && (
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                    <Lock className="h-4 w-4" />
-                    密码
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      placeholder="请输入密码"
-                      className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-antigravity-blue focus:border-transparent transition-all duration-200 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
-                      autoFocus
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-200"
-                    >
-                      {showPassword ? (
-                        <EyeOff className="h-4 w-4" />
-                      ) : (
-                        <Eye className="h-4 w-4" />
-                      )}
-                    </button>
-                  </div>
+              {/* 密码输入 */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Lock className="h-4 w-4" />
+                  密码
+                </label>
+                <div className="relative">
+                  <input
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="请输入密码"
+                    className="w-full px-4 py-3 pr-12 bg-gray-50 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-antigravity-blue focus:border-transparent transition-all duration-200 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400"
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors duration-200"
+                  >
+                    {showPassword ? (
+                      <EyeOff className="h-4 w-4" />
+                    ) : (
+                      <Eye className="h-4 w-4" />
+                    )}
+                  </button>
                 </div>
-              )}
+              </div>
 
               {/* 确认密码输入 */}
               {requireConfirmation && (

@@ -5,6 +5,7 @@ import type { ListBackupsResult } from './types/tauri';
 import ManageSection from './components/ManageSection';
 import StatusNotification from './components/StatusNotification';
 import Toolbar from './components/Toolbar';
+import { TooltipProvider } from './components/ui/tooltip';
 
 interface Status {
   message: string;
@@ -49,41 +50,14 @@ function App() {
 
             console.log('提取的邮箱:', userEmail);
 
-            // 生成基于邮箱和时间的备份文件名
-            let backupName: string;
-            let isOverwrite = false;
-
-            // 格式: {邮箱}_{时间戳}
-            const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, '-');
-            const newBackupName = `${userEmail}_${timestamp}`;
-
-            // 检查是否已存在该用户的任何备份（以邮箱开头）
-            const existingUserBackup = existingBackups.find(backup =>
-              backup.startsWith(`${userEmail}_`)
-            );
-
-            if (existingUserBackup) {
-              // 如果存在备份，使用相同的文件名覆盖
-              backupName = existingUserBackup;
-              isOverwrite = true;
-              console.log('发现已存在的备份，将覆盖:', backupName);
-            } else {
-              // 如果不存在，创建新的备份文件名
-              backupName = newBackupName;
-              console.log('创建新的备份，文件名:', backupName);
-            }
-
             try {
+              // 直接传递邮箱给后端，让后端处理去重逻辑和文件名生成
               const result = await invoke('backup_antigravity_current_account', {
-                accountName: backupName
+                email: userEmail  // 参数名必须匹配后端函数参数名
               });
               console.log('智能备份成功:', result);
 
-              if (isOverwrite) {
-                showStatus(`已更新用户备份: ${userEmail}`, false);
-              } else {
-                showStatus(`已自动备份当前用户: ${userEmail}`, false);
-              }
+              showStatus(`已自动备份当前用户: ${userEmail}`, false);
               autoBackedUp = true;
             } catch (backupError) {
               console.error('自动备份失败:', backupError);
@@ -145,7 +119,7 @@ function App() {
   }, []);
 
   return (
-    <>
+    <TooltipProvider>
       <style>{`
         .DialogOverlay {
           position: fixed;
@@ -228,7 +202,7 @@ function App() {
 
         <StatusNotification status={status} />
       </div>
-    </>
+    </TooltipProvider>
   );
 }
 

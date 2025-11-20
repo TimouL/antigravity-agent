@@ -1,21 +1,47 @@
 // Antigravity 用户数据恢复模块
 // 负责将备份数据恢复到 Antigravity 应用数据库
 
-use rusqlite::Connection;
-use std::path::{Path, PathBuf};
+use rusqlite::{params, Connection, OptionalExtension};
+use serde_json::{json, Value};
 use std::fs;
+use std::path::PathBuf;
 
-// 导入 platform_utils 模块 (需要在 main.rs 中声明为 pub mod)
+// 导入 platform_utils 模块
 use crate::platform_utils;
 
-/// 通用数据库恢复方法
+/// 从备份的 Marker 中获取 Key 对应的 flag (0 或 1)
+/// 如果找不到，回退到安全默认值
+fn get_marker_flag_from_backup(backup_marker: &Option<&Value>, key: &str) -> i32 {
+    if let Some(marker_val) = backup_marker {
+        if let Some(marker_obj) = marker_val.as_object() {
+            if let Some(flag) = marker_obj.get(key) {
+                if let Some(i) = flag.as_i64() {
+                    println!("  📖 从备份 Marker 读取 {} = {}", key, i);
+                    return i as i32;
+                }
+            }
+        }
+    }
+    
+    // 只有在备份文件损坏或是旧版本时才使用此回退逻辑
+    let default = match key {
+        "antigravityAuthStatus" 
+        | "antigravity.profileUrl" 
+        | "antigravityOnboarding" 
+        | "antigravity_allowed_command_model_configs" => 0,
+        _ => 1,
+    };
+    println!("  ⚠️ 备份中没有 {} 的 Marker 信息，使用默认值: {}", key, default);
+    default
+}
+
+/// 通用数据库恢复方法（终极版 - 从备份 Marker 读取值）
 ///
 /// 执行精确的数据库恢复操作：
-/// 1. 恢复认证信息 (antigravityAuthStatus)
-/// 2. 恢复用户头像 (antigravity.profileUrl)
-/// 3. 恢复用户设置 (antigravityUserSettings.allUserSettings)
-/// 4. 恢复校验标记 (__$__targetStorageMarker)
-/// 5. 重置分析时间戳 (antigravityAnalytics.lastUploadTime)
+/// 1. 从备份中读取字段的原始值
+/// 2. 插入到数据库（使用 INSERT OR REPLACE）
+/// 3. 从备份的 Marker 中读取每个字段应该是 0 还是 1
+/// 4. 智能合并 Marker（保留现有配置）
 ///
 /// # 参数
 /// - `db_path`: 数据库文件路径
@@ -25,101 +51,129 @@ use crate::platform_utils;
 /// # 返回
 /// - `Ok(restored_count)`: 成功恢复的项目数量
 /// - `Err(message)`: 错误信息
-fn restore_database(
-    db_path: &Path,
-    db_name: &str,
-    backup_data: &serde_json::Value
-) -> Result<usize, String> {
+fn restore_database(db_path: &PathBuf, db_name: &str, backup_data: &Value) -> Result<usize, String> {
     println!("🔄 恢复数据库: {}", db_name);
+    let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
-    let conn = Connection::open(db_path)
-        .map_err(|e| format!("连接{}失败: {}", db_name, e))?;
+    // 需要恢复的字段列表（与备份列表一致）
+    let keys_to_restore = vec![
+        "antigravityAuthStatus",
+        "antigravity.profileUrl",
+        "antigravityUserSettings.allUserSettings",
+        "antigravityOnboarding",
+        "google.antigravity",
+        "antigravity_allowed_command_model_configs",
+        "jetskiStateSync.agentManagerInitState",
+        "chat.ChatSessionStore.index",
+        "__$__isNewStorageMarker", // 关键：恢复这个状态标记
+    ];
 
     let mut restored_count = 0;
+    let mut restored_keys = Vec::new();
 
-    // 1. 恢复认证信息
-    if let Some(auth_status) = backup_data.get("auth_status") {
-        if let Some(auth_str) = auth_status.as_str() {
-            conn.execute(
-                "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('antigravityAuthStatus', ?)",
-                [auth_str],
-            )
-            .map_err(|e| format!("恢复认证信息失败: {}", e))?;
-
-            println!("  ✅ 已恢复: antigravityAuthStatus");
-            restored_count += 1;
-        }
-    }
-
-    // 2. 恢复头像
-    if let Some(profile_url) = backup_data.get("profile_url") {
-        if let Some(url_str) = profile_url.as_str() {
-            conn.execute(
-                "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('antigravity.profileUrl', ?)",
-                [url_str],
-            )
-            .map_err(|e| format!("恢复头像失败: {}", e))?;
-
-            println!("  ✅ 已恢复: antigravity.profileUrl");
-            restored_count += 1;
-        }
-    }
-
-    // 3. 恢复用户设置
-    if let Some(user_settings) = backup_data.get("user_settings") {
-        if let Some(settings_str) = user_settings.as_str() {
-            conn.execute(
-                "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('antigravityUserSettings.allUserSettings', ?)",
-                [settings_str],
-            )
-            .map_err(|e| format!("恢复用户设置失败: {}", e))?;
-
-            println!("  ✅ 已恢复: antigravityUserSettings.allUserSettings");
-            restored_count += 1;
-        }
-    }
-
-    // 4. 恢复校验标记（从备份中动态获取）
-    if let Some(target_marker) = backup_data.get("target_storage_marker") {
-        if let Some(marker_str) = target_marker.as_str() {
-            conn.execute(
-                "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('__$__targetStorageMarker', ?)",
-                [marker_str],
-            )
-            .map_err(|e| format!("恢复校验标记失败: {}", e))?;
-
-            println!("  ✅ 已恢复: __$__targetStorageMarker");
-            restored_count += 1;
+    // 1. 插入数据（Value 直接使用备份中的原始字符串）
+    for key in &keys_to_restore {
+        if let Some(val) = backup_data.get(*key) {
+            if let Some(val_str) = val.as_str() {
+                match conn.execute(
+                    "INSERT OR REPLACE INTO ItemTable (key, value) VALUES (?, ?)",
+                    params![key, val_str],
+                ) {
+                    Ok(_) => {
+                        println!("  ✅ 注入数据: {}", key);
+                        restored_count += 1;
+                        // 只有非特殊字段才需要在 Marker 中注册
+                        if *key != "__$__isNewStorageMarker" {
+                            restored_keys.push(*key);
+                        }
+                    }
+                    Err(e) => {
+                        println!("  ⚠️ 写入 {} 失败: {}", key, e);
+                    }
+                }
+            } else {
+                println!("  ⚠️ 字段 {} 不是字符串类型，跳过", key);
+            }
         } else {
-            println!("  ℹ️ 备份中无校验标记，跳过");
+            println!("  ℹ️ 备份中未找到: {} (跳过)", key);
         }
-    } else {
-        println!("  ℹ️ 备份中无校验标记字段，跳过");
     }
 
-    // 5. 重置分析时间戳（避免数据冲突）
-    conn.execute(
-        "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('antigravityAnalytics.lastUploadTime', '0')",
-        [],
-    )
-    .map_err(|e| format!("重置分析时间戳失败: {}", e))?;
+    // 2. 智能合并 Marker
+    if !restored_keys.is_empty() {
+        println!("  🔧 开始智能合并 Marker...");
+        
+        // A. 读取当前数据库的 Marker
+        let current_marker_str: Option<String> = conn
+            .query_row(
+                "SELECT value FROM ItemTable WHERE key = '__$__targetStorageMarker'",
+                [],
+                |row| row.get(0),
+            )
+            .optional()
+            .unwrap_or(None);
 
-    println!("  ✅ 已重置分析时间戳");
+        let mut current_marker_obj = match current_marker_str {
+            Some(s) => {
+                println!("  📋 读取到现有 Marker");
+                serde_json::from_str::<serde_json::Map<String, Value>>(&s).unwrap_or_default()
+            }
+            None => {
+                println!("  ℹ️ 未找到现有 Marker，创建新的");
+                serde_json::Map::new()
+            }
+        };
 
-    drop(conn);
+        println!("  📊 合并前 Marker 包含 {} 个字段", current_marker_obj.len());
+
+        // B. 获取备份文件中的 Marker（作为参考源）
+        let backup_marker = backup_data.get("__$__targetStorageMarker");
+        if backup_marker.is_some() {
+            println!("  📖 从备份文件中读取到完整 Marker，将使用其中的值作为参考");
+        } else {
+            println!("  ⚠️ 备份文件中没有 Marker，将使用默认值");
+        }
+
+        // C. 将已恢复 Key 的 Marker 状态合并进去
+        for key in &restored_keys {
+            // 关键：从备份里读取它是 0 还是 1，而不是瞎猜
+            let flag = get_marker_flag_from_backup(&backup_marker, key);
+            current_marker_obj.insert(key.to_string(), json!(flag));
+        }
+
+        println!("  📊 合并后 Marker 包含 {} 个字段", current_marker_obj.len());
+
+        // D. 写回 Marker
+        let new_marker_str = serde_json::to_string(&current_marker_obj)
+            .map_err(|e| format!("序列化 Marker 失败: {}", e))?;
+        
+        conn.execute(
+            "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('__$__targetStorageMarker', ?)",
+            [new_marker_str],
+        ).map_err(|e| format!("更新 Marker 失败: {}", e))?;
+        
+        println!("  ✅ Marker 已智能合并（使用备份中的精确值）");
+        
+        // E. 重置上传时间戳（防止 Sync 冲突）
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('antigravityAnalytics.lastUploadTime', '0')",
+            []
+        );
+        println!("  ✅ 已重置分析时间戳");
+    } else {
+        println!("  ⚠️ 未恢复任何数据，跳过 Marker 更新");
+    }
+
     Ok(restored_count)
 }
 
-/// 恢复 Antigravity 的用户认证数据（完整恢复）
+/// 恢复 Antigravity 的用户认证数据（终极版）
 ///
 /// 从备份文件恢复用户数据到数据库：
-/// - 恢复认证信息 (antigravityAuthStatus)
-/// - 恢复用户头像 (antigravity.profileUrl)
-/// - 恢复用户设置 (antigravityUserSettings.allUserSettings)
-/// - 恢复校验标记 (__$__targetStorageMarker)
-/// - 重置分析时间戳 (antigravityAnalytics.lastUploadTime)
-///
-/// 同时处理主数据库和备份数据库，保持数据一致性
+/// - 恢复所有字段的原始值
+/// - 从备份的 Marker 中读取每个字段的同步状态（0 或 1）
+/// - 恢复 __$__isNewStorageMarker 状态标记
+/// - 同时处理主数据库和备份数据库
 ///
 /// # 参数
 /// - `backup_file_path`: 备份 JSON 文件的完整路径
@@ -127,32 +181,25 @@ fn restore_database(
 /// # 返回
 /// - `Ok(message)`: 成功消息
 /// - `Err(message)`: 错误信息
-pub async fn restore_all_antigravity_data(
-    backup_file_path: PathBuf
-) -> Result<String, String> {
-    println!("🔄 开始恢复 Antigravity 用户认证数据");
+pub async fn restore_all_antigravity_data(backup_file_path: PathBuf) -> Result<String, String> {
+    println!("🚀 开始执行智能恢复（从备份 Marker 读取精确值）...");
     println!("📂 备份文件: {}", backup_file_path.display());
-
-    // 1. 读取备份文件
-    if !backup_file_path.exists() {
+    
+    if !backup_file_path.exists() { 
         return Err(format!("备份文件不存在: {}", backup_file_path.display()));
     }
-
-    let backup_content = fs::read_to_string(&backup_file_path)
-        .map_err(|e| format!("读取备份文件失败: {}", e))?;
-
-    let backup_data: serde_json::Value = serde_json::from_str(&backup_content)
-        .map_err(|e| format!("解析备份数据失败: {}", e))?;
+    
+    let content = fs::read_to_string(&backup_file_path).map_err(|e| e.to_string())?;
+    let backup_data: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
     println!("✅ 备份文件读取成功");
 
-    // 2. 获取 Antigravity 数据库路径
     let app_data = match platform_utils::get_antigravity_db_path() {
-        Some(path) => path,
+        Some(p) => p,
         None => {
             let possible_paths = platform_utils::get_all_antigravity_db_paths();
             if possible_paths.is_empty() {
-                return Err("未找到Antigravity安装位置".to_string());
+                return Err("未找到 Antigravity 安装位置".to_string());
             }
             possible_paths[0].clone()
         }
@@ -164,41 +211,31 @@ pub async fn restore_all_antigravity_data(
             .map_err(|e| format!("创建数据库目录失败: {}", e))?;
     }
 
-    let mut restored_items = Vec::new();
-
-    // 3. 恢复主数据库 (state.vscdb)
+    let mut msg = String::new();
+    
+    // 恢复主库
     println!("📊 步骤1: 恢复 state.vscdb 数据库");
     match restore_database(&app_data, "state.vscdb", &backup_data) {
         Ok(count) => {
-            println!("  ✅ 主数据库已恢复 {} 项", count);
-            restored_items.push(format!("state.vscdb({} 项)", count));
+            let status = format!("主库恢复 {} 项", count);
+            println!("  ✅ {}", status);
+            msg.push_str(&status);
         }
-        Err(e) => {
-            return Err(format!("恢复主数据库失败: {}", e));
-        }
+        Err(e) => return Err(e),
     }
-
-    // 4. 恢复备份数据库 (state.vscdb.backup) - 同步
+    
+    // 恢复备份库（如果有）
     println!("💾 步骤2: 恢复 state.vscdb.backup");
-    let backup_db_path = app_data.with_extension("vscdb.backup");
-    if backup_db_path.exists() {
-        match restore_database(&backup_db_path, "state.vscdb.backup", &backup_data) {
-            Ok(count) => {
-                println!("  ✅ 备份数据库已恢复 {} 项", count);
-                restored_items.push(format!("state.vscdb.backup({} 项)", count));
-            }
-            Err(e) => {
-                println!("  ⚠️ 恢复备份数据库失败: {}", e);
-                // 备份数据库失败不中断流程
-            }
+    let backup_db = app_data.with_extension("vscdb.backup");
+    if backup_db.exists() {
+        if let Ok(count) = restore_database(&backup_db, "state.vscdb.backup", &backup_data) {
+            let status = format!("; 备份库恢复 {} 项", count);
+            println!("  ✅ {}", status);
+            msg.push_str(&status);
         }
     } else {
         println!("  ℹ️ 备份数据库不存在，跳过");
     }
 
-    Ok(format!(
-        "✅ 已恢复 {} 个数据库\n恢复详情: {}",
-        restored_items.len(),
-        restored_items.join(", ")
-    ))
+    Ok(format!("✅ 恢复成功! {}", msg))
 }

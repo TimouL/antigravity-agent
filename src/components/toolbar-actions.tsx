@@ -7,9 +7,9 @@ import {
 } from 'lucide-react';
 import ToolbarButton from './ui/toolbar-button';
 import ConfirmDialog from './ConfirmDialog';
-import { ConfigManager } from '../services/config-manager';
+import { ConfigManager } from '../services/config-export-manager'; // 使用新的模块
 import { AntigravityService } from '../services/antigravity-service';
-import { EncryptionService } from '../utils/encryption';
+// 移除 EncryptionService 导入，已集成到新模块中
 
 interface LoadingState {
   isProcessLoading: boolean;
@@ -47,6 +47,9 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
   // 状态：是否有用户数据可以导出
   const [hasUserData, setHasUserData] = useState<boolean>(false);
   const [isCheckingData, setIsCheckingData] = useState<boolean>(false);
+
+  // 配置管理器实例（使用新的 ConfigExportManager）
+  const [configManager] = useState(() => new ConfigManager());
 
   // 确认对话框状态
   const [confirmDialog, setConfirmDialog] = useState<{
@@ -102,10 +105,10 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
 1. 关闭所有 Antigravity 进程
 2. 自动备份当前账户信息
 3. 清除 Antigravity 用户信息
-4. 重新启动 Antigravity
+4. 自动重新启动 Antigravity
 
-登录新账户后点击 “刷新” 即可保存新账户 
-注意：请确保已保存所有重要工作`,
+登录新账户后点击 "刷新" 即可保存新账户
+注意：系统将自动启动 Antigravity，请确保已保存所有重要工作`,
       onConfirm: async () => {
         console.log('✅ 用户确认登录新账户操作');
         try {
@@ -139,7 +142,7 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
   // 导入配置文件
   const importConfig = useCallback(async () => {
     try {
-      const result = await ConfigManager.importConfig(showStatus);
+      const result = await configManager.importEncryptedConfig();
 
       if (!result.success) {
         showStatus(result.message, true);
@@ -151,21 +154,27 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
         title: '导入配置文件',
         description: '请输入配置文件的解密密码',
         requireConfirmation: false,
+        validatePassword: (password) => configManager.validatePassword(password),
         onSubmit: async (password) => {
           try {
             closePasswordDialog();
             setLoadingState(prev => ({ ...prev, isImporting: true }));
             showStatus('正在解密配置文件...');
 
-            const configData = await ConfigManager.decryptConfig(result.encryptedData!, password);
+            const decryptResult = await configManager.decryptConfigData(result.encryptedData!, password);
 
-            showStatus(`配置文件导入成功 (版本: ${configData.version})`);
-            console.log('导入的配置:', configData);
+            if (decryptResult.success && decryptResult.configData) {
+              const configData = decryptResult.configData;
+              showStatus(`配置文件导入成功 (版本: ${configData.version})`);
+              console.log('导入的配置:', configData);
 
-            // 延迟刷新以确保数据完整性
-            setTimeout(() => {
-              onRefresh();
-            }, 500);
+              // 延迟刷新以确保数据完整性
+              setTimeout(() => {
+                onRefresh();
+              }, 500);
+            } else {
+              showStatus(decryptResult.message, true);
+            }
 
           } catch (error) {
             const errorMessage = error instanceof Error ? error.message : String(error);
@@ -180,31 +189,46 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
       const errorMessage = error instanceof Error ? error.message : String(error);
       showStatus(`选择文件失败: ${errorMessage}`, true);
     }
-  }, [showStatus, onRefresh, showPasswordDialog, closePasswordDialog, setLoadingState]);
+  }, [configManager, showStatus, onRefresh, showPasswordDialog, closePasswordDialog, setLoadingState]);
 
-  // 导出配置文件
+  // 导出配置文件（使用新的命名）
   const exportConfig = useCallback(async () => {
+    // 检查是否有可导出的数据
+    const hasData = await configManager.hasExportableData();
+    if (!hasData) {
+      showStatus('没有找到任何用户信息，无法导出配置文件', true);
+      return;
+    }
+
     // 使用密码对话框获取密码
     showPasswordDialog({
       title: '导出配置文件',
       description: '请设置导出密码，用于保护您的配置文件',
       requireConfirmation: true,
-      validatePassword: EncryptionService.validatePassword,
+      validatePassword: (password) => configManager.validatePassword(password),
       onSubmit: async (password) => {
         try {
           closePasswordDialog();
           setLoadingState(prev => ({ ...prev, isExporting: true }));
+          showStatus('正在生成加密配置文件...');
 
-          await ConfigManager.exportConfig(password, showStatus);
+          const exportResult = await configManager.exportEncryptedConfig(password);
+
+          if (exportResult.success) {
+            showStatus(`配置文件已保存: ${exportResult.filePath}`);
+          } else {
+            showStatus(exportResult.message, true);
+          }
 
         } catch (error) {
-          // ConfigManager 已经处理了错误显示
+          const errorMessage = error instanceof Error ? error.message : String(error);
+          showStatus(`导出配置文件失败: ${errorMessage}`, true);
         } finally {
           setLoadingState(prev => ({ ...prev, isExporting: false }));
         }
       }
     });
-  }, [showStatus, showPasswordDialog, closePasswordDialog, setLoadingState]);
+  }, [configManager, showStatus, showPasswordDialog, closePasswordDialog, setLoadingState]);
 
   return (
     <>
@@ -213,7 +237,7 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
           onClick={backupAndRestartAntigravity}
           isLoading={loadingState.isProcessLoading}
           loadingText="处理中..."
-          tooltip="关闭 Antigravity，备份当前用户，并清除 Antigravity 用户信息"
+          tooltip="关闭 Antigravity，备份当前用户，清除用户信息，并自动重新启动"
           variant="primary"
           className="shadow-md hover:shadow-xl"
           isAnyLoading={isAnyLoading}

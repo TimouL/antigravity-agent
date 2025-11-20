@@ -10,14 +10,19 @@ use walkdir::WalkDir;
 use zip::{ZipWriter, write::FileOptions};
 use std::io::Write;
 
-use rusqlite::{params, Connection, Result as SqlResult};
-use std::process::Command;
+use rusqlite::{Connection, Result as SqlResult};
 
 /// Antigravity 清理模块
 mod antigravity_cleanup;
 
+/// Antigravity 备份模块
+mod antigravity_backup;
+
 /// Antigravity 恢复模块
 mod antigravity_restore;
+
+/// Antigravity 启动模块
+mod antigravity_starter;
 
 /// 窗口状态管理模块
 mod window_state_manager;
@@ -25,11 +30,13 @@ mod window_state_manager;
 /// 窗口事件处理模块
 mod window_event_handler;
 
+/// 系统托盘模块
+mod system_tray;
+
 /// 多平台支持工具函数
 mod platform_utils {
     use std::path::PathBuf;
     use std::process::Command;
-    use dirs;
 
     /// 获取Antigravity应用数据目录（跨平台）
     pub fn get_antigravity_data_dir() -> Option<PathBuf> {
@@ -105,7 +112,7 @@ mod platform_utils {
                     for entry in entries.flatten() {
                         let path = entry.path();
                         if path.is_file() &&
-                           path.file_name().map_or(false, |name| name == "state.vscdb") {
+                           path.file_name().is_some_and(|name| name == "state.vscdb") {
                             db_paths.push(path);
                         }
                     }
@@ -166,154 +173,7 @@ mod platform_utils {
         }
     }
 
-    /// 启动Antigravity
-    pub fn start_antigravity() -> Result<String, String> {
-        match std::env::consts::OS {
-            "windows" => {
-                // Windows: 使用绝对路径推测
-                let mut errors = Vec::new();
-                let mut antigravity_paths = Vec::new();
-
-                // 1. 基于用户主目录构建可能的路径
-                if let Some(home) = dirs::home_dir() {
-                    // C:\Users\{用户名}\AppData\Local\Programs\Antigravity\Antigravity.exe (最常见)
-                    antigravity_paths.push(home.join(r"AppData\Local\Programs\Antigravity\Antigravity.exe"));
-                    // C:\Users\{用户名}\AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe
-                    antigravity_paths.push(home.join(r"AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe"));
-                }
-
-                // 2. 使用 data_local_dir (通常是 C:\Users\{用户名}\AppData\Local)
-                if let Some(local_data) = dirs::data_local_dir() {
-                    antigravity_paths.push(local_data.join(r"Programs\Antigravity\Antigravity.exe"));
-                }
-
-                // 3. 其他可能的位置
-                antigravity_paths.push(PathBuf::from(r"C:\Program Files\Antigravity\Antigravity.exe"));
-                antigravity_paths.push(PathBuf::from(r"C:\Program Files (x86)\Antigravity\Antigravity.exe"));
-
-                // 尝试所有推测的路径
-                for path in &antigravity_paths {
-                    if path.exists() {
-                        eprintln!("找到并尝试启动: {}", path.display());
-                        match Command::new(path).spawn() {
-                            Ok(_) => {
-                                return Ok(format!("Antigravity启动成功 ({})", path.display()));
-                            }
-                            Err(e) => {
-                                errors.push(format!("{}: {}", path.display(), e));
-                            }
-                        }
-                    } else {
-                        errors.push(format!("{}: 文件不存在", path.display()));
-                    }
-                }
-
-                // 4. 最后尝试从系统PATH启动命令
-                let commands = vec!["Antigravity", "antigravity"];
-                for cmd in commands {
-                    eprintln!("尝试命令: {}", cmd);
-                    match Command::new(cmd).spawn() {
-                        Ok(_) => {
-                            return Ok(format!("Antigravity启动成功 (命令: {})", cmd));
-                        }
-                        Err(e) => {
-                            errors.push(format!("{}命令: {}", cmd, e));
-                        }
-                    }
-                }
-
-                Err(format!("无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}", errors.join("\n")))
-            }
-            "macos" => {
-                // macOS: 基于 product.json 中的 darwinBundleIdentifier: "com.google.antigravity" 配置
-                let mut errors = Vec::new();
-                let mut antigravity_paths = Vec::new();
-
-                // 基于 DMG 安装包的标准 .app 应用结构
-                antigravity_paths.push(PathBuf::from("/Applications/Antigravity.app/Contents/MacOS/Antigravity"));
-
-                // 用户应用目录（用户手动安装时的常见位置）
-                if let Some(home) = dirs::home_dir() {
-                    antigravity_paths.push(home.join("Applications/Antigravity.app/Contents/MacOS/Antigravity"));
-                }
-
-                // 尝试所有推测的路径
-                for path in &antigravity_paths {
-                    if path.exists() {
-                        eprintln!("找到并尝试启动: {}", path.display());
-                        match Command::new(path).spawn() {
-                            Ok(_) => {
-                                return Ok(format!("Antigravity启动成功 ({})", path.display()));
-                            }
-                            Err(e) => {
-                                errors.push(format!("{}: {}", path.display(), e));
-                            }
-                        }
-                    } else {
-                        errors.push(format!("{}: 文件不存在", path.display()));
-                    }
-                }
-
-                // 2. 尝试系统PATH命令
-                let commands = vec!["Antigravity", "antigravity"];
-                for cmd in commands {
-                    match Command::new(cmd).spawn() {
-                        Ok(_) => {
-                            return Ok(format!("Antigravity启动成功 (命令: {})", cmd));
-                        }
-                        Err(e) => {
-                            errors.push(format!("{}命令: {}", cmd, e));
-                        }
-                    }
-                }
-
-                Err(format!("无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}", errors.join("\n")))
-            }
-            "linux" => {
-                // Linux: 基于实际安装包分析的路径检测
-                let mut errors = Vec::new();
-                let mut antigravity_paths = Vec::new();
-
-                // 基于安装包实际分析的唯一有证据的路径
-                antigravity_paths.push(PathBuf::from("/usr/share/antigravity/antigravity")); // 启动脚本硬编码的默认路径
-
-                // 尝试所有推测的路径
-                for path in &antigravity_paths {
-                    if path.exists() {
-                        eprintln!("找到并尝试启动: {}", path.display());
-                        match Command::new(path).spawn() {
-                            Ok(_) => {
-                                return Ok(format!("Antigravity启动成功 ({})", path.display()));
-                            }
-                            Err(e) => {
-                                errors.push(format!("{}: {}", path.display(), e));
-                            }
-                        }
-                    } else {
-                        errors.push(format!("{}: 文件不存在", path.display()));
-                    }
-                }
-
-                // 尝试系统 PATH 中的命令（如果安装包解压到 PATH 包含的目录）
-                let commands = vec!["antigravity", "Antigravity"];
-                for cmd in commands {
-                    eprintln!("尝试命令: {}", cmd);
-                    match Command::new(cmd).spawn() {
-                        Ok(_) => {
-                            return Ok(format!("Antigravity启动成功 (命令: {})", cmd));
-                        }
-                        Err(e) => {
-                            errors.push(format!("{}命令: {}", cmd, e));
-                        }
-                    }
-                }
-
-                Err(format!("无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}", errors.join("\n")))
-            }
-            _ => Err("不支持的操作系统".to_string())
-        }
-    }
-}
+  }
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ProfileInfo {
@@ -340,6 +200,11 @@ struct AntigravityAccount {
 // 导入窗口状态管理器
 use window_state_manager::{WindowState, load_window_state as load_ws, save_window_state as save_ws};
 
+// 导入 Antigravity 启动器
+use antigravity_starter::start_antigravity as start_antigravity_app;
+
+// 导入系统托盘管理器
+
 #[derive(Debug, Serialize, Deserialize)]
 struct AppState {
     profiles: HashMap<String, ProfileInfo>,
@@ -354,7 +219,7 @@ impl Default for AppState {
         let config_dir = if cfg!(windows) {
             // Windows: 优先使用 APPDATA 环境变量
             std::env::var_os("APPDATA")
-                .and_then(|appdata| Some(PathBuf::from(appdata).join(".antigravity-agent")))
+                .map(|appdata| PathBuf::from(appdata).join(".antigravity-agent"))
                 .or_else(|| {
                     // 备用方案：通过用户主目录构建 AppData\Roaming 路径
                     dirs::home_dir()
@@ -429,7 +294,7 @@ async fn backup_profile(
     zip.finish().map_err(|e| format!("完成压缩失败: {}", e))?;
 
     // 更新配置信息
-    let profile_info = ProfileInfo {
+    let _profile_info = ProfileInfo {
         name: name.clone(),
         source_path: source_path.clone(),
         backup_path: backup_file.to_string_lossy().to_string(),
@@ -493,7 +358,7 @@ async fn list_backups(state: State<'_, AppState>) -> Result<Vec<String>, String>
             let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
             let path = entry.path();
 
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 if let Some(name) = path.file_stem() {
                     all_backups.push(name.to_string_lossy().to_string());
                 }
@@ -535,7 +400,7 @@ async fn clear_all_backups(
             let path = entry.path();
 
             // 只删除 JSON 文件
-            if path.extension().map_or(false, |ext| ext == "json") {
+            if path.extension().is_some_and(|ext| ext == "json") {
                 fs::remove_file(&path).map_err(|e| format!("删除文件 {} 失败: {}", path.display(), e))?;
                 deleted_count += 1;
             }
@@ -551,7 +416,7 @@ async fn clear_all_backups(
 #[tauri::command]
 async fn switch_antigravity_account(
     account_id: String,
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<String, String> {
     // 获取 Antigravity 状态数据库路径
     let app_data = match platform_utils::get_antigravity_db_path() {
@@ -571,7 +436,7 @@ async fn switch_antigravity_account(
     }
 
     // 连接到 SQLite 数据库
-    let conn = Connection::open(&app_data)
+    let _conn = Connection::open(&app_data)
         .map_err(|e| format!("连接数据库失败 ({}): {}", app_data.display(), e))?;
 
     // 这里应该加载并更新账户信息
@@ -581,131 +446,13 @@ async fn switch_antigravity_account(
 
 #[tauri::command]
 async fn get_antigravity_accounts(
-    state: State<'_, AppState>,
+    _state: State<'_, AppState>,
 ) -> Result<Vec<AntigravityAccount>, String> {
     // 这里应该从存储中加载账户列表
     // 暂时返回空列表
     Ok(vec![])
 }
 
-/// 获取备份文件列表（内部辅助函数）
-fn get_backup_list_internal(config_dir: &Path) -> Result<Vec<String>, String> {
-    let mut backups = Vec::new();
-    if let Ok(entries) = fs::read_dir(config_dir) {
-        for entry in entries.flatten() {
-            if let Some(file_name) = entry.path().file_stem() {
-                if let Some(name) = file_name.to_str() {
-                    backups.push(name.to_string());
-                }
-            }
-        }
-    }
-    Ok(backups)
-}
-
-/// 智能备份Antigravity账户（通用函数）
-///
-/// 如果该邮箱已有备份，则覆盖；否则创建新备份
-///
-/// # 参数
-/// - `email`: 用户邮箱
-///
-/// # 返回
-/// - `Ok((backup_name, is_overwrite))`: 备份文件名和是否为覆盖操作
-/// - `Err(message)`: 错误信息
-fn smart_backup_antigravity_account(email: &str) -> Result<(String, bool), String> {
-    println!("🔧 执行智能备份，邮箱: {}", email);
-
-    // 1. 获取配置目录
-    let config_dir = dirs::config_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".antigravity-agent")
-        .join("antigravity-accounts");
-    fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("创建配置目录失败: {}", e))?;
-
-    // 2. 获取现有备份列表
-    let existing_backups = get_backup_list_internal(&config_dir)?;
-    println!("📋 现有备份列表: {:?}", existing_backups);
-
-    // 3. 检查是否已存在该邮箱的备份
-    let email_prefix = format!("{}_", email);
-    let existing_backup = existing_backups.iter()
-        .find(|backup| backup.starts_with(&email_prefix));
-
-    let (backup_name, is_overwrite) = if let Some(existing) = existing_backup {
-        // 覆盖现有备份
-        println!("♻️ 发现现有备份，将覆盖: {}", existing);
-        (existing.clone(), true)
-    } else {
-        // 创建新备份
-        let timestamp = chrono::Local::now().format("%Y-%m-%dT%H-%M-%S").to_string();
-        let new_name = format!("{}_{}", email, timestamp);
-        println!("✨ 创建新备份: {}", new_name);
-        (new_name, false)
-    };
-
-    // 4. 获取数据库路径
-    let app_data = platform_utils::get_antigravity_db_path()
-        .ok_or_else(|| "未找到Antigravity数据库路径".to_string())?;
-
-    if !app_data.exists() {
-        return Err(format!("数据库文件不存在: {}", app_data.display()));
-    }
-
-    // 5. 连接数据库并获取数据
-    println!("🗃️ 连接数据库: {}", app_data.display());
-    let conn = Connection::open(&app_data)
-        .map_err(|e| format!("连接数据库失败: {}", e))?;
-
-    let auth_result: SqlResult<String> = conn.query_row(
-        "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'",
-        [],
-        |row| Ok(row.get(0)?),
-    );
-
-    let profile_url_result: SqlResult<String> = conn.query_row(
-        "SELECT value FROM ItemTable WHERE key = 'antigravity.profileUrl'",
-        [],
-        |row| Ok(row.get(0)?),
-    );
-
-    let user_settings_result: SqlResult<String> = conn.query_row(
-        "SELECT value FROM ItemTable WHERE key = 'antigravityUserSettings.allUserSettings'",
-        [],
-        |row| Ok(row.get(0)?),
-    );
-
-    let target_marker_result: SqlResult<String> = conn.query_row(
-        "SELECT value FROM ItemTable WHERE key = '__$__targetStorageMarker'",
-        [],
-        |row| Ok(row.get(0)?),
-    );
-
-    drop(conn);
-
-    // 6. 构建备份数据
-    let backup_data = serde_json::json!({
-        "account_name": backup_name,
-        "auth_status": auth_result.ok(),
-        "profile_url": profile_url_result.ok(),
-        "user_settings": user_settings_result.ok(),
-        "target_storage_marker": target_marker_result.ok(),
-        "backup_time": chrono::Local::now().to_rfc3339(),
-        "version": "1.0"
-    });
-
-    // 7. 写入备份文件
-    let backup_file = config_dir.join(format!("{}.json", backup_name));
-    println!("💾 写入备份文件: {}", backup_file.display());
-    fs::write(&backup_file, backup_data.to_string())
-        .map_err(|e| format!("写入备份文件失败: {}", e))?;
-
-    let action = if is_overwrite { "覆盖" } else { "创建" };
-    println!("✅ 备份完成 ({}): {}", action, backup_name);
-
-    Ok((backup_name, is_overwrite))
-}
 
 #[tauri::command]
 async fn get_current_antigravity_info(
@@ -735,7 +482,7 @@ async fn get_current_antigravity_info(
         "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'",
         [],
         |row| {
-            Ok(row.get(0)?)
+            row.get(0)
         },
     );
 
@@ -757,23 +504,22 @@ async fn get_current_antigravity_info(
 
 #[tauri::command]
 async fn backup_antigravity_current_account(
-    account_name: String,
+    email: String,  // 参数名改为 email，直接接收邮箱
 ) -> Result<String, String> {
-    println!("📥 调用 backup_antigravity_current_account，文件名: {}", account_name);
+    println!("📥 调用 backup_antigravity_current_account，邮箱: {}", email);
 
-    // 从文件名中提取邮箱（格式: email_timestamp）
-    let email = account_name.split('_').next()
-        .ok_or_else(|| "无效的备份文件名格式".to_string())?;
-
-    println!("📧 提取的邮箱: {}", email);
-
-    // 调用通用智能备份函数
-    match smart_backup_antigravity_account(email) {
+    // 直接调用智能备份函数，让它处理去重逻辑和文件名生成
+    match antigravity_backup::smart_backup_antigravity_account(&email) {
         Ok((backup_name, is_overwrite)) => {
             let action = if is_overwrite { "更新" } else { "备份" };
-            Ok(format!("Antigravity 账户 '{}'{}成功", backup_name, action))
+            let message = format!("Antigravity 账户 '{}'{}成功", backup_name, action);
+            println!("✅ {}", message);
+            Ok(message)
         }
-        Err(e) => Err(e)
+        Err(e) => {
+            println!("❌ 智能备份失败: {}", e);
+            Err(e)
+        }
     }
 }
 
@@ -814,6 +560,7 @@ async fn save_window_state(
         width,
         height,
         maximized,
+        system_tray_enabled: true, // 这里使用默认值，因为系统托盘状态有专门的持久化机制
     };
 
     // 使用带防抖的窗口状态管理器
@@ -824,6 +571,79 @@ async fn save_window_state(
 async fn load_window_state() -> Result<WindowState, String> {
     // 使用窗口状态管理器加载状态
     load_ws().await
+}
+
+// 系统托盘命令
+#[tauri::command]
+async fn enable_system_tray() -> Result<String, String> {
+    if let Some(manager) = system_tray::SystemTrayManager::get_global() {
+        match manager.lock().unwrap().enable() {
+            Ok(_) => Ok("系统托盘功能已启用".to_string()),
+            Err(e) => Err(format!("启用系统托盘失败: {}", e))
+        }
+    } else {
+        Err("系统托盘未初始化".to_string())
+    }
+}
+
+#[tauri::command]
+async fn disable_system_tray() -> Result<String, String> {
+    if let Some(manager) = system_tray::SystemTrayManager::get_global() {
+        match manager.lock().unwrap().disable() {
+            Ok(_) => Ok("系统托盘功能已禁用".to_string()),
+            Err(e) => Err(format!("禁用系统托盘失败: {}", e))
+        }
+    } else {
+        Err("系统托盘未初始化".to_string())
+    }
+}
+
+#[tauri::command]
+async fn minimize_to_tray() -> Result<String, String> {
+    if let Some(manager) = system_tray::SystemTrayManager::get_global() {
+        let manager = manager.lock().unwrap();
+        match manager.minimize_to_tray() {
+            Ok(_) => Ok("窗口已最小化到系统托盘".to_string()),
+            Err(e) => Err(format!("最小化到托盘失败: {}", e))
+        }
+    } else {
+        Err("系统托盘未初始化".to_string())
+    }
+}
+
+#[tauri::command]
+async fn restore_from_tray() -> Result<String, String> {
+    if let Some(manager) = system_tray::SystemTrayManager::get_global() {
+        let manager = manager.lock().unwrap();
+        match manager.restore_from_tray() {
+            Ok(_) => Ok("窗口已从系统托盘恢复".to_string()),
+            Err(e) => Err(format!("从托盘恢复失败: {}", e))
+        }
+    } else {
+        Err("系统托盘未初始化".to_string())
+    }
+}
+
+#[tauri::command]
+async fn is_system_tray_enabled() -> Result<bool, String> {
+    if let Some(manager) = system_tray::SystemTrayManager::get_global() {
+        Ok(manager.lock().unwrap().is_enabled())
+    } else {
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn save_system_tray_state(enabled: bool) -> Result<String, String> {
+    match window_state_manager::save_system_tray_state(enabled).await {
+        Ok(_) => Ok("系统托盘状态已保存".to_string()),
+        Err(e) => Err(format!("保存系统托盘状态失败: {}", e))
+    }
+}
+
+#[tauri::command]
+async fn get_system_tray_state() -> Result<bool, String> {
+    window_state_manager::get_system_tray_state().await
 }
 
 // 平台支持命令
@@ -869,7 +689,7 @@ async fn kill_antigravity() -> Result<String, String> {
 
 #[tauri::command]
 async fn start_antigravity() -> Result<String, String> {
-    platform_utils::start_antigravity()
+    start_antigravity_app()
 }
 
 #[tauri::command]
@@ -915,7 +735,7 @@ async fn backup_and_restart_antigravity() -> Result<String, String> {
     let auth_str: String = conn.query_row(
         "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'",
         [],
-        |row| Ok(row.get(0)?),
+        |row| row.get(0),
     ).map_err(|e| format!("查询认证信息失败: {}", e))?;
 
     drop(conn);
@@ -930,7 +750,7 @@ async fn backup_and_restart_antigravity() -> Result<String, String> {
     println!("📧 获取到的邮箱: {}", email);
 
     // 调用通用智能备份函数
-    let (backup_name, is_overwrite) = smart_backup_antigravity_account(email)?;
+    let (backup_name, is_overwrite) = antigravity_backup::smart_backup_antigravity_account(email)?;
     let backup_action = if is_overwrite { "更新" } else { "创建" };
     println!("✅ 备份完成 ({}): {}", backup_action, backup_name);
 
@@ -949,21 +769,19 @@ async fn backup_and_restart_antigravity() -> Result<String, String> {
     // 等待一秒确保操作完成
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-    // 4. 重新启动进程 (暂时注释掉，让用户手动启动)
-    // println!("🚀 步骤4: 重新启动 Antigravity");
-    // let start_result = platform_utils::start_antigravity();
-    // let start_message = match start_result {
-    //     Ok(result) => {
-    //         println!("✅ 启动结果: {}", result);
-    //         result
-    //     }
-    //     Err(e) => {
-    //         println!("⚠️ 启动失败: {}", e);
-    //         format!("启动失败: {}", e)
-    //     }
-    // };
-
-    let start_message = "已清除完成，请手动启动 Antigravity".to_string();
+    // 4. 重新启动进程
+    println!("🚀 步骤4: 重新启动 Antigravity");
+    let start_result = antigravity_starter::start_antigravity();
+    let start_message = match start_result {
+        Ok(result) => {
+            println!("✅ 启动结果: {}", result);
+            result
+        }
+        Err(e) => {
+            println!("⚠️ 启动失败: {}", e);
+            format!("启动失败: {}", e)
+        }
+    };
 
     let final_message = format!("{} -> 已{}备份: {} -> 已清除账户数据 -> {}",
         kill_result, backup_action, backup_name, start_message);
@@ -1011,20 +829,19 @@ async fn switch_to_antigravity_account(
     // 等待一秒确保数据库操作完成
     tokio::time::sleep(tokio::time::Duration::from_millis(1000)).await;
 
-    // 3. 重新启动 Antigravity 进程 (暂时注释掉，让用户手动启动)
-    // println!("🚀 步骤3: 重新启动 Antigravity");
-    // let start_result = platform_utils::start_antigravity();
-    // let start_message = match start_result {
-    //     Ok(result) => {
-    //         println!("✅ 启动结果: {}", result);
-    //         result
-    //     }
-    //     Err(e) => {
-    //         println!("⚠️ 启动失败: {}", e);
-    //         format!("启动失败: {}", e)
-    //     }
-    // };
-    let start_message = "已恢复账户，请手动启动 Antigravity".to_string();
+    // 3. 重新启动 Antigravity 进程
+    println!("🚀 步骤3: 重新启动 Antigravity");
+    let start_result = antigravity_starter::start_antigravity();
+    let start_message = match start_result {
+        Ok(result) => {
+            println!("✅ 启动结果: {}", result);
+            result
+        }
+        Err(e) => {
+            println!("⚠️ 启动失败: {}", e);
+            format!("启动失败: {}", e)
+        }
+    };
 
 
     let final_message = format!("{} -> {} -> {}", kill_result, restore_result, start_message);
@@ -1034,8 +851,7 @@ async fn switch_to_antigravity_account(
 }
 
 fn main() {
-    // 启动 Antigravity Agent v0.1.0
-    println!("🚀 启动 Antigravity Agent v0.1.0");
+    println!("🚀 启动 Antigravity Agent");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
@@ -1044,9 +860,16 @@ fn main() {
         .manage(AppState::default())
         .setup(|app| {
             // 初始化窗口事件处理器
-            if let Err(e) = window_event_handler::init_window_event_handler(&app) {
+            if let Err(e) = window_event_handler::init_window_event_handler(app) {
                 eprintln!("⚠️  窗口事件处理器初始化失败: {}", e);
             }
+
+            // 初始化系统托盘管理器
+            match system_tray::SystemTrayManager::initialize_global(app.handle()) {
+                Ok(_) => println!("✅ 系统托盘管理器初始化成功"),
+                Err(e) => println!("⚠️ 系统托盘管理器初始化失败: {}", e)
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1073,7 +896,15 @@ fn main() {
             validate_antigravity_path,
             // 窗口状态管理命令
             save_window_state,
-            load_window_state
+            load_window_state,
+            // 系统托盘命令
+            enable_system_tray,
+            disable_system_tray,
+            minimize_to_tray,
+            restore_from_tray,
+            is_system_tray_enabled,
+            save_system_tray_state,
+            get_system_tray_state
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

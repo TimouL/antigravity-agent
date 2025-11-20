@@ -1,9 +1,11 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import PasswordDialog from './PasswordDialog';
 import { TooltipProvider } from './ui/tooltip';
 import ToolbarTitle from './ui/toolbar-title';
 import ToolbarActions from './toolbar-actions';
+import SystemTraySwitch from './ui/system-tray-switch';
 import { usePasswordDialog } from '../hooks/use-password-dialog';
+import { SystemTrayService } from '../services/system-tray-service';
 
 interface ToolbarProps {
   onRefresh: () => void;
@@ -23,6 +25,55 @@ const Toolbar: React.FC<ToolbarProps> = ({ onRefresh, isRefreshing = false, show
     isImporting: false,
     isExporting: false
   });
+
+  // 系统托盘状态
+  const [trayEnabled, setTrayEnabled] = useState(false);
+  const initializedRef = useRef(false);
+
+  // 初始化系统托盘状态 - 只在组件挂载时执行一次
+  useEffect(() => {
+    // 防止重复初始化
+    if (initializedRef.current) return;
+    initializedRef.current = true;
+
+    const initSystemTray = async () => {
+      try {
+        // 首先获取持久化的状态
+        const savedEnabled = await SystemTrayService.getSystemTrayState();
+        console.log(`📋 持久化的系统托盘状态: ${savedEnabled ? '已启用' : '未启用'}`);
+
+        // 然后检查实际的运行时状态
+        const runtimeEnabled = await SystemTrayService.isSystemTrayEnabled();
+        console.log(`📋 运行时系统托盘状态: ${runtimeEnabled ? '已启用' : '未启用'}`);
+
+        // 使用持久化状态作为UI显示状态
+        setTrayEnabled(savedEnabled);
+
+        // 如果状态不一致，显示提示
+        if (savedEnabled !== runtimeEnabled) {
+          showStatus(`系统托盘状态已更新为${savedEnabled ? '启用' : '禁用'}`);
+        }
+      } catch (error) {
+        console.error('初始化系统托盘状态失败:', error);
+        // 出错时使用默认启用状态
+        setTrayEnabled(true);
+      }
+    };
+
+    initSystemTray();
+  }, []); // 空依赖数组，只在挂载时执行一次
+
+  // 处理系统托盘开关变化
+  const handleTrayToggle = async (enabled: boolean) => {
+    try {
+      // 更新UI状态
+      setTrayEnabled(enabled);
+      return { enabled };
+    } catch (error) {
+      console.error('切换系统托盘状态失败:', error);
+      throw error;
+    }
+  };
 
   // 使用密码对话框 Hook
   const {
@@ -58,6 +109,14 @@ const Toolbar: React.FC<ToolbarProps> = ({ onRefresh, isRefreshing = false, show
               setLoadingState={setLoadingState}
               showPasswordDialog={showPasswordDialog}
               closePasswordDialog={closePasswordDialog}
+            />
+
+            {/* 系统托盘开关 - 最右侧 */}
+            <SystemTraySwitch
+              checked={trayEnabled}
+              onCheckedChange={handleTrayToggle}
+              disabled={isAnyLoading}
+              showStatus={showStatus}
             />
           </div>
         </div>
