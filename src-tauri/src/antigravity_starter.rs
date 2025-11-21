@@ -208,7 +208,7 @@ fn try_start_from_path(path: &PathBuf) -> Result<String, String> {
         .spawn()
         .map_err(|e| format!("启动失败: {}", e))?;
 
-    Ok(format!("成功启动应用程序"))
+    Ok("成功启动应用程序".to_string())
 }
 
 /// 尝试从系统命令启动应用程序
@@ -227,5 +227,5 @@ fn try_start_from_commands(commands: Vec<&str>) -> Result<String, String> {
         }
     }
 
-    Err(format!("所有命令尝试失败: {}", errors.join(", ")))
+    Err(errors.join(", "))
 }

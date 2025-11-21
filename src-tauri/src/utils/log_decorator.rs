@@ -50,11 +50,9 @@ pub fn log_database_operation(operation: &str, table: Option<&str>, success: boo
         } else {
             log::error!("❌ 数据库操作失败: {} - 表: {}", operation, table);
         }
+    } else if success {
+        log::info!("🗄️ 数据库操作成功: {}", operation);
     } else {
-        if success {
-            log::info!("🗄️ 数据库操作成功: {}", operation);
-        } else {
-            log::error!("❌ 数据库操作失败: {}", operation);
-        }
+        log::error!("❌ 数据库操作失败: {}", operation);
     }
 }

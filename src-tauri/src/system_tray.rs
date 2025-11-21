@@ -81,8 +81,7 @@ impl SystemTrayManager {
                             let rgba_data = rgba_img.into_raw();
 
                             // 创建 Tauri Image
-                            let tauri_image =
-                                Image::new_owned(rgba_data, width as u32, height as u32);
+                            let tauri_image = Image::new_owned(rgba_data, width, height);
                             tray_builder = tray_builder.icon(tauri_image);
                             println!("✅ 托盘图标加载成功，尺寸: {}x{}", width, height);
                         }
@@ -136,7 +135,7 @@ impl SystemTrayManager {
 
         // 使用 OnceCell 安全地设置全局实例
         let manager_arc = Arc::new(Mutex::new(manager));
-        if let Err(_) = SYSTEM_TRAY_MANAGER.set(manager_arc) {
+        if SYSTEM_TRAY_MANAGER.set(manager_arc).is_err() {
             // 如果设置失败，说明已经被设置了，直接返回
             return Ok(());
         }
@@ -147,7 +146,7 @@ impl SystemTrayManager {
 
     /// 获取全局系统托盘管理器
     pub fn get_global() -> Option<Arc<Mutex<SystemTrayManager>>> {
-        SYSTEM_TRAY_MANAGER.get().map(|mgr| Arc::clone(mgr))
+        SYSTEM_TRAY_MANAGER.get().cloned()
     }
 
     /// 启用系统托盘功能

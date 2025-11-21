@@ -277,7 +277,7 @@ pub async fn clear_logs() -> Result<String, String> {
         if log_file.exists() {
             // 备份当前日志（可选）
             let backup_path = log_dir.join("antigravity-agent.backup.log");
-            if let Ok(_) = fs::copy(&log_file, &backup_path) {
+            if fs::copy(&log_file, &backup_path).is_ok() {
                 log::info!("📦 日志已备份");
             }
 

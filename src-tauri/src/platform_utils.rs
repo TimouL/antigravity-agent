@@ -211,7 +211,7 @@ pub fn resolve_antigravity_exe_windows() -> Option<PathBuf> {
         }
     }
 
-    for path in find_running_antigravity_exes() {
+    if let Some(path) = find_running_antigravity_exes().into_iter().next() {
         let _ = persist_antigravity_path(&path);
         return Some(path);
     }
