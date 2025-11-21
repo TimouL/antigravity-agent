@@ -6,8 +6,8 @@ use serde_json::Value;
 use std::path::Path;
 
 // 导入 platform_utils 模块
-use crate::platform_utils;
 use crate::constants::database;
+use crate::platform_utils;
 
 /// 使用常量定义需要物理删除的字段
 const DELETE_KEYS: &[&str] = database::DELETE_KEYS;
@@ -15,10 +15,13 @@ const DELETE_KEYS: &[&str] = database::DELETE_KEYS;
 /// 智能更新 Marker：彻底移除指定的 Key（而非设为0）
 fn remove_keys_from_marker(conn: &Connection, keys_to_remove: &[&str]) -> Result<(), String> {
     println!("  🔧 正在修正校验标记 (Marker)...");
-    
+
     let current_marker_json: Option<String> = conn
         .query_row(
-            &format!("SELECT value FROM ItemTable WHERE key = '{}'", database::TARGET_STORAGE_MARKER),
+            &format!(
+                "SELECT value FROM ItemTable WHERE key = '{}'",
+                database::TARGET_STORAGE_MARKER
+            ),
             [],
             |row| row.get(0),
         )
@@ -39,14 +42,18 @@ fn remove_keys_from_marker(conn: &Connection, keys_to_remove: &[&str]) -> Result
     }
 
     if changed {
-        let new_marker_str = serde_json::to_string(&marker_obj)
-            .map_err(|e| format!("序列化失败: {}", e))?;
+        let new_marker_str =
+            serde_json::to_string(&marker_obj).map_err(|e| format!("序列化失败: {}", e))?;
 
         conn.execute(
-            &format!("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('{}', ?)", database::TARGET_STORAGE_MARKER),
+            &format!(
+                "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('{}', ?)",
+                database::TARGET_STORAGE_MARKER
+            ),
             [new_marker_str],
-        ).map_err(|e| format!("写入 Marker 失败: {}", e))?;
-        
+        )
+        .map_err(|e| format!("写入 Marker 失败: {}", e))?;
+
         println!("  ✅ 校验标记已清理（完全移除登录相关字段）");
     } else {
         println!("  ℹ️ 校验标记无需变更");
@@ -61,11 +68,12 @@ fn clear_database(db_path: &Path, db_name: &str) -> Result<usize, String> {
     let mut count = 0;
     // 1. 物理删除数据行
     for key in DELETE_KEYS {
-        let rows = conn.execute("DELETE FROM ItemTable WHERE key = ?", [key])
+        let rows = conn
+            .execute("DELETE FROM ItemTable WHERE key = ?", [key])
             .unwrap_or(0);
-        if rows > 0 { 
+        if rows > 0 {
             println!("  ✅ 已删除: {}", key);
-            count += 1; 
+            count += 1;
         }
     }
 
@@ -79,7 +87,7 @@ fn clear_database(db_path: &Path, db_name: &str) -> Result<usize, String> {
 
 pub async fn clear_all_antigravity_data() -> Result<String, String> {
     println!("🗑️ 开始清除 Antigravity 用户认证数据");
-    
+
     let app_data = match platform_utils::get_antigravity_db_path() {
         Some(p) => p,
         None => {
@@ -92,11 +100,14 @@ pub async fn clear_all_antigravity_data() -> Result<String, String> {
     };
 
     if !app_data.exists() {
-        return Err(format!("Antigravity 状态数据库不存在: {}", app_data.display()));
+        return Err(format!(
+            "Antigravity 状态数据库不存在: {}",
+            app_data.display()
+        ));
     }
 
     let mut msg = String::new();
-    
+
     // 清理主库
     println!("📊 步骤1: 清除 state.vscdb 数据库");
     match clear_database(&app_data, "state.vscdb") {

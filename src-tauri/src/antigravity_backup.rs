@@ -6,8 +6,8 @@ use serde_json::Value;
 use std::fs;
 use std::path::PathBuf;
 
-use crate::platform_utils;
 use crate::constants::database;
+use crate::platform_utils;
 
 /// 智能备份 Antigravity 账户（终极版 - 保存完整 Marker）
 ///
@@ -34,10 +34,9 @@ pub fn smart_backup_antigravity_account(email: &str) -> Result<(String, bool), S
     // 简单的覆盖逻辑：每个邮箱只保留一个备份
     let backup_name = email.to_string();
     let is_overwrite = config_dir.join(format!("{}.json", backup_name)).exists();
-    
-    let app_data = platform_utils::get_antigravity_db_path()
-        .ok_or("未找到数据库路径")?;
-    
+
+    let app_data = platform_utils::get_antigravity_db_path().ok_or("未找到数据库路径")?;
+
     if !app_data.exists() {
         return Err(format!("数据库文件不存在: {}", app_data.display()));
     }
@@ -52,14 +51,12 @@ pub fn smart_backup_antigravity_account(email: &str) -> Result<(String, bool), S
     // 1. 提取数据（保持原始字符串格式）
     for key in keys_to_backup {
         let val: Option<String> = conn
-            .query_row(
-                "SELECT value FROM ItemTable WHERE key = ?",
-                [key],
-                |row| row.get(0),
-            )
+            .query_row("SELECT value FROM ItemTable WHERE key = ?", [key], |row| {
+                row.get(0)
+            })
             .optional()
             .unwrap_or(None);
-        
+
         if let Some(v) = val {
             println!("  📦 备份字段: {}", key);
             data_map.insert(key.to_string(), Value::String(v));
@@ -71,7 +68,10 @@ pub fn smart_backup_antigravity_account(email: &str) -> Result<(String, bool), S
     // 2. 提取并解析 Marker（作为恢复时的参考书）
     let marker_json: Option<String> = conn
         .query_row(
-            &format!("SELECT value FROM ItemTable WHERE key = '{}'", database::TARGET_STORAGE_MARKER),
+            &format!(
+                "SELECT value FROM ItemTable WHERE key = '{}'",
+                database::TARGET_STORAGE_MARKER
+            ),
             [],
             |row| row.get(0),
         )
@@ -87,8 +87,14 @@ pub fn smart_backup_antigravity_account(email: &str) -> Result<(String, bool), S
     }
 
     // 3. 添加元信息
-    data_map.insert("account_email".to_string(), Value::String(email.to_string()));
-    data_map.insert("backup_time".to_string(), Value::String(chrono::Local::now().to_rfc3339()));
+    data_map.insert(
+        "account_email".to_string(),
+        Value::String(email.to_string()),
+    );
+    data_map.insert(
+        "backup_time".to_string(),
+        Value::String(chrono::Local::now().to_rfc3339()),
+    );
 
     // 4. 写入备份文件
     let backup_file = config_dir.join(format!("{}.json", backup_name));

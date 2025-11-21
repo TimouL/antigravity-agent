@@ -59,15 +59,12 @@ pub mod paths {
     /// 配置目录名称
     pub const CONFIG_DIR_NAME: &str = ".antigravity-agent";
 
-    
     /// 窗口状态文件
     pub const WINDOW_STATE_FILE: &str = "window_state.json";
 }
 
 /// 窗口状态限制
-pub mod window_limits {
-}
+pub mod window_limits {}
 
 /// 进程管理常量
-pub mod process {
-}
+pub mod process {}

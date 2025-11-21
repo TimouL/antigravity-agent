@@ -1,9 +1,8 @@
+use crate::constants::paths;
 /// 配置管理器
 /// 统一管理所有配置目录和文件路径
-
 use std::fs;
 use std::path::PathBuf;
-use crate::constants::paths;
 
 /// 配置管理器结构
 pub struct ConfigManager {
@@ -17,13 +16,11 @@ impl ConfigManager {
             .unwrap_or_else(|| PathBuf::from("."))
             .join(paths::CONFIG_DIR_NAME);
 
-        fs::create_dir_all(&config_dir)
-            .map_err(|e| format!("创建配置目录失败: {}", e))?;
+        fs::create_dir_all(&config_dir).map_err(|e| format!("创建配置目录失败: {}", e))?;
 
         Ok(Self { config_dir })
     }
 
-    
     /// 获取窗口状态文件路径
     pub fn window_state_file(&self) -> PathBuf {
         self.config_dir.join(paths::WINDOW_STATE_FILE)

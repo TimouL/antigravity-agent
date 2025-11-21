@@ -1,16 +1,15 @@
 // 窗口事件处理模块
 // 负责在应用启动时恢复窗口状态
 
-use tauri::Manager;
+use crate::window_state_manager::{load_window_state, save_window_state, WindowState};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
-use crate::window_state_manager::{WindowState, load_window_state, save_window_state};
+use tauri::Manager;
 
 /// 初始化窗口事件处理器
 pub fn init_window_event_handler(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     // 获取主窗口
-    let main_window = app.get_webview_window("main")
-        .ok_or("无法获取主窗口")?;
+    let main_window = app.get_webview_window("main").ok_or("无法获取主窗口")?;
 
     // 创建保存状态的共享状态，用于防抖和恢复标志
     let last_save_time = Arc::new(Mutex::new(Instant::now()));
@@ -22,26 +21,30 @@ pub fn init_window_event_handler(app: &tauri::App) -> Result<(), Box<dyn std::er
     tauri::async_runtime::spawn(async move {
         match load_window_state().await {
             Ok(saved_state) => {
-                println!("🔄 恢复窗口状态: 位置({:.1}, {:.1}), 大小({:.1}x{:.1}), 最大化:{}",
-                         saved_state.x, saved_state.y, saved_state.width, saved_state.height, saved_state.maximized);
+                println!(
+                    "🔄 恢复窗口状态: 位置({:.1}, {:.1}), 大小({:.1}x{:.1}), 最大化:{}",
+                    saved_state.x,
+                    saved_state.y,
+                    saved_state.width,
+                    saved_state.height,
+                    saved_state.maximized
+                );
 
                 // 设置窗口位置
-                if let Err(e) = window_clone.set_position(tauri::Position::Physical(
-                    tauri::PhysicalPosition {
+                if let Err(e) =
+                    window_clone.set_position(tauri::Position::Physical(tauri::PhysicalPosition {
                         x: saved_state.x as i32,
                         y: saved_state.y as i32,
-                    }
-                )) {
+                    }))
+                {
                     eprintln!("⚠️ 恢复窗口位置失败: {}，将使用默认位置", e);
                 }
 
                 // 设置窗口大小
-                if let Err(e) = window_clone.set_size(tauri::Size::Physical(
-                    tauri::PhysicalSize {
-                        width: saved_state.width as u32,
-                        height: saved_state.height as u32,
-                    }
-                )) {
+                if let Err(e) = window_clone.set_size(tauri::Size::Physical(tauri::PhysicalSize {
+                    width: saved_state.width as u32,
+                    height: saved_state.height as u32,
+                })) {
                     eprintln!("⚠️ 恢复窗口大小失败: {}，将使用默认大小", e);
                 }
 
@@ -167,7 +170,9 @@ pub fn init_window_event_handler(app: &tauri::App) -> Result<(), Box<dyn std::er
                                 let _window = window_for_events.clone();
                                 std::thread::spawn(move || {
                                     // 在新线程中同步调用，避免异步上下文中的锁竞争
-                                    if let Some(manager) = crate::system_tray::SystemTrayManager::get_global() {
+                                    if let Some(manager) =
+                                        crate::system_tray::SystemTrayManager::get_global()
+                                    {
                                         match manager.lock() {
                                             Ok(mut manager) => {
                                                 if let Err(e) = manager.minimize_to_tray() {
@@ -175,7 +180,9 @@ pub fn init_window_event_handler(app: &tauri::App) -> Result<(), Box<dyn std::er
                                                 }
                                             }
                                             Err(_) => {
-                                                eprintln!("⚠️ 系统托盘管理器锁中毒，无法最小化到托盘");
+                                                eprintln!(
+                                                    "⚠️ 系统托盘管理器锁中毒，无法最小化到托盘"
+                                                );
                                             }
                                         }
                                     }
@@ -209,7 +216,7 @@ async fn save_current_window_state(window: &tauri::WebviewWindow) {
     if let (Ok(outer_position), Ok(outer_size), Ok(is_maximized)) = (
         window.outer_position(),
         window.outer_size(),
-        window.is_maximized()
+        window.is_maximized(),
     ) {
         let current_state = WindowState {
             x: outer_position.x as f64,

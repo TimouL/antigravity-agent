@@ -2,7 +2,6 @@
 ///
 /// 提供跨平台的 Antigravity 应用程序启动功能
 /// 支持 Windows、macOS 和 Linux 系统
-
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -26,7 +25,7 @@ pub fn start_antigravity() -> Result<String, String> {
         "windows" => start_antigravity_windows(),
         "macos" => start_antigravity_macos(),
         "linux" => start_antigravity_linux(),
-        _ => Err("不支持的操作系统".to_string())
+        _ => Err("不支持的操作系统".to_string()),
     }
 }
 
@@ -69,7 +68,10 @@ fn start_antigravity_windows() -> Result<String, String> {
         Ok(msg) => Ok(msg),
         Err(e) => {
             errors.push(e);
-            Err(format!("无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}", errors.join("\n")))
+            Err(format!(
+                "无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}",
+                errors.join("\n")
+            ))
         }
     }
 }
@@ -102,7 +104,10 @@ fn start_antigravity_macos() -> Result<String, String> {
         Ok(msg) => Ok(msg),
         Err(e) => {
             errors.push(e);
-            Err(format!("无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}", errors.join("\n")))
+            Err(format!(
+                "无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}",
+                errors.join("\n")
+            ))
         }
     }
 }
@@ -135,7 +140,10 @@ fn start_antigravity_linux() -> Result<String, String> {
         Ok(msg) => Ok(msg),
         Err(e) => {
             errors.push(e);
-            Err(format!("无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}", errors.join("\n")))
+            Err(format!(
+                "无法启动Antigravity。请手动启动Antigravity应用。\n尝试的方法：\n{}",
+                errors.join("\n")
+            ))
         }
     }
 }
@@ -149,7 +157,8 @@ fn get_antigravity_windows_paths() -> Vec<PathBuf> {
         // C:\Users\{用户名}\AppData\Local\Programs\Antigravity\Antigravity.exe (最常见)
         antigravity_paths.push(home.join(r"AppData\Local\Programs\Antigravity\Antigravity.exe"));
         // C:\Users\{用户名}\AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe
-        antigravity_paths.push(home.join(r"AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe"));
+        antigravity_paths
+            .push(home.join(r"AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe"));
     }
 
     // 2. 使用 data_local_dir (通常是 C:\Users\{用户名}\AppData\Local)
@@ -158,8 +167,12 @@ fn get_antigravity_windows_paths() -> Vec<PathBuf> {
     }
 
     // 3. 其他可能的位置
-    antigravity_paths.push(PathBuf::from(r"C:\Program Files\Antigravity\Antigravity.exe"));
-    antigravity_paths.push(PathBuf::from(r"C:\Program Files (x86)\Antigravity\Antigravity.exe"));
+    antigravity_paths.push(PathBuf::from(
+        r"C:\Program Files\Antigravity\Antigravity.exe",
+    ));
+    antigravity_paths.push(PathBuf::from(
+        r"C:\Program Files (x86)\Antigravity\Antigravity.exe",
+    ));
 
     antigravity_paths
 }
@@ -169,11 +182,14 @@ fn get_antigravity_macos_paths() -> Vec<PathBuf> {
     let mut antigravity_paths = Vec::new();
 
     // 基于 DMG 安装包的标准 .app 应用结构
-    antigravity_paths.push(PathBuf::from("/Applications/Antigravity.app/Contents/MacOS/Antigravity"));
+    antigravity_paths.push(PathBuf::from(
+        "/Applications/Antigravity.app/Contents/MacOS/Antigravity",
+    ));
 
     // 用户应用目录（用户手动安装时的常见位置）
     if let Some(home) = dirs::home_dir() {
-        antigravity_paths.push(home.join("Applications/Antigravity.app/Contents/MacOS/Antigravity"));
+        antigravity_paths
+            .push(home.join("Applications/Antigravity.app/Contents/MacOS/Antigravity"));
     }
 
     antigravity_paths
@@ -182,7 +198,7 @@ fn get_antigravity_macos_paths() -> Vec<PathBuf> {
 /// 获取 Linux 平台下 Antigravity 的可能安装路径
 fn get_antigravity_linux_paths() -> Vec<PathBuf> {
     vec![
-        PathBuf::from("/usr/share/antigravity/antigravity") // 启动脚本硬编码的默认路径
+        PathBuf::from("/usr/share/antigravity/antigravity"), // 启动脚本硬编码的默认路径
     ]
 }
 

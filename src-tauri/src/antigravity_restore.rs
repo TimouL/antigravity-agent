@@ -7,8 +7,8 @@ use std::fs;
 use std::path::PathBuf;
 
 // 导入 platform_utils 模块
-use crate::platform_utils;
 use crate::constants::database;
+use crate::platform_utils;
 
 /// 从备份的 Marker 中获取 Key 对应的 flag (0 或 1)
 /// 如果找不到，回退到安全默认值
@@ -23,7 +23,7 @@ fn get_marker_flag_from_backup(backup_marker: &Option<&Value>, key: &str) -> i32
             }
         }
     }
-    
+
     // 只有在备份文件损坏或是旧版本时才使用此回退逻辑
     let default = match key {
         database::AUTH_STATUS
@@ -32,7 +32,10 @@ fn get_marker_flag_from_backup(backup_marker: &Option<&Value>, key: &str) -> i32
         | database::COMMAND_CONFIGS => 0,
         _ => 1,
     };
-    println!("  ⚠️ 备份中没有 {} 的 Marker 信息，使用默认值: {}", key, default);
+    println!(
+        "  ⚠️ 备份中没有 {} 的 Marker 信息，使用默认值: {}",
+        key, default
+    );
     default
 }
 
@@ -52,7 +55,11 @@ fn get_marker_flag_from_backup(backup_marker: &Option<&Value>, key: &str) -> i32
 /// # 返回
 /// - `Ok(restored_count)`: 成功恢复的项目数量
 /// - `Err(message)`: 错误信息
-fn restore_database(db_path: &PathBuf, db_name: &str, backup_data: &Value) -> Result<usize, String> {
+fn restore_database(
+    db_path: &PathBuf,
+    db_name: &str,
+    backup_data: &Value,
+) -> Result<usize, String> {
     println!("🔄 恢复数据库: {}", db_name);
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
 
@@ -93,11 +100,14 @@ fn restore_database(db_path: &PathBuf, db_name: &str, backup_data: &Value) -> Re
     // 2. 智能合并 Marker
     if !restored_keys.is_empty() {
         println!("  🔧 开始智能合并 Marker...");
-        
+
         // A. 读取当前数据库的 Marker
         let current_marker_str: Option<String> = conn
             .query_row(
-                &format!("SELECT value FROM ItemTable WHERE key = '{}'", database::TARGET_STORAGE_MARKER),
+                &format!(
+                    "SELECT value FROM ItemTable WHERE key = '{}'",
+                    database::TARGET_STORAGE_MARKER
+                ),
                 [],
                 |row| row.get(0),
             )
@@ -115,7 +125,10 @@ fn restore_database(db_path: &PathBuf, db_name: &str, backup_data: &Value) -> Re
             }
         };
 
-        println!("  📊 合并前 Marker 包含 {} 个字段", current_marker_obj.len());
+        println!(
+            "  📊 合并前 Marker 包含 {} 个字段",
+            current_marker_obj.len()
+        );
 
         // B. 获取备份文件中的 Marker（作为参考源）
         let backup_marker = backup_data.get("__$__targetStorageMarker");
@@ -132,19 +145,26 @@ fn restore_database(db_path: &PathBuf, db_name: &str, backup_data: &Value) -> Re
             current_marker_obj.insert(key.to_string(), json!(flag));
         }
 
-        println!("  📊 合并后 Marker 包含 {} 个字段", current_marker_obj.len());
+        println!(
+            "  📊 合并后 Marker 包含 {} 个字段",
+            current_marker_obj.len()
+        );
 
         // D. 写回 Marker
         let new_marker_str = serde_json::to_string(&current_marker_obj)
             .map_err(|e| format!("序列化 Marker 失败: {}", e))?;
-        
+
         conn.execute(
-            &format!("INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('{}', ?)", database::TARGET_STORAGE_MARKER),
+            &format!(
+                "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('{}', ?)",
+                database::TARGET_STORAGE_MARKER
+            ),
             [new_marker_str],
-        ).map_err(|e| format!("更新 Marker 失败: {}", e))?;
-        
+        )
+        .map_err(|e| format!("更新 Marker 失败: {}", e))?;
+
         println!("  ✅ Marker 已智能合并（使用备份中的精确值）");
-        
+
         // E. 重置上传时间戳（防止 Sync 冲突）
         let _ = conn.execute(
             "INSERT OR REPLACE INTO ItemTable (key, value) VALUES ('antigravityAnalytics.lastUploadTime', '0')",
@@ -175,11 +195,11 @@ fn restore_database(db_path: &PathBuf, db_name: &str, backup_data: &Value) -> Re
 pub async fn restore_all_antigravity_data(backup_file_path: PathBuf) -> Result<String, String> {
     println!("🚀 开始执行智能恢复（从备份 Marker 读取精确值）...");
     println!("📂 备份文件: {}", backup_file_path.display());
-    
-    if !backup_file_path.exists() { 
+
+    if !backup_file_path.exists() {
         return Err(format!("备份文件不存在: {}", backup_file_path.display()));
     }
-    
+
     let content = fs::read_to_string(&backup_file_path).map_err(|e| e.to_string())?;
     let backup_data: Value = serde_json::from_str(&content).map_err(|e| e.to_string())?;
 
@@ -198,12 +218,11 @@ pub async fn restore_all_antigravity_data(backup_file_path: PathBuf) -> Result<S
 
     // 确保数据库目录存在
     if let Some(parent) = app_data.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|e| format!("创建数据库目录失败: {}", e))?;
+        fs::create_dir_all(parent).map_err(|e| format!("创建数据库目录失败: {}", e))?;
     }
 
     let mut msg = String::new();
-    
+
     // 恢复主库
     println!("📊 步骤1: 恢复 state.vscdb 数据库");
     match restore_database(&app_data, "state.vscdb", &backup_data) {
@@ -214,7 +233,7 @@ pub async fn restore_all_antigravity_data(backup_file_path: PathBuf) -> Result<S
         }
         Err(e) => return Err(e),
     }
-    
+
     // 恢复备份库（如果有）
     println!("💾 步骤2: 恢复 state.vscdb.backup");
     let backup_db = app_data.with_extension("vscdb.backup");

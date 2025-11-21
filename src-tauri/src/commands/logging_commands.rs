@@ -1,9 +1,9 @@
 //! 日志相关命令
 //! 提供日志导出和管理功能
 
-use std::fs;
 use dirs;
 use regex::Regex;
+use std::fs;
 
 // 日志文件大小限制 (10MB)
 const MAX_LOG_FILE_SIZE: u64 = 10 * 1024 * 1024;
@@ -19,17 +19,14 @@ fn filter_sensitive_info(log_content: &str) -> String {
         "password",
         "pwd",
         "passwd",
-
         // Token相关
         "token",
         "access_token",
         "refresh_token",
-
         // API密钥相关
         "api_key",
         "secret_key",
         "private_key",
-
         // 认证信息
         "authorization",
     ];
@@ -41,8 +38,8 @@ fn filter_sensitive_info(log_content: &str) -> String {
     for line in lines {
         let lower_line = line.to_lowercase();
         let contains_sensitive = search_terms.iter().any(|term| {
-            lower_line.contains(&term.to_lowercase()) &&
-            (lower_line.contains(":") || lower_line.contains("="))
+            lower_line.contains(&term.to_lowercase())
+                && (lower_line.contains(":") || lower_line.contains("="))
         });
 
         if contains_sensitive {
@@ -60,13 +57,17 @@ fn filter_sensitive_info(log_content: &str) -> String {
     let mut filtered_lines = Vec::new();
 
     for line in lines {
-        let contains_path = line.contains('\\') || line.contains('/') ||
-                           line.contains("Users\\") || line.contains("AppData\\") ||
-                           line.contains("Program Files") || line.contains("ProgramData") ||
-                           line.contains(":/") || line.contains(":/\\");
+        let contains_path = line.contains('\\')
+            || line.contains('/')
+            || line.contains("Users\\")
+            || line.contains("AppData\\")
+            || line.contains("Program Files")
+            || line.contains("ProgramData")
+            || line.contains(":/")
+            || line.contains(":/\\");
 
-        let contains_log_dir = line.contains("antigravity-agent") &&
-                               (line.contains("logs") || line.contains("config"));
+        let contains_log_dir = line.contains("antigravity-agent")
+            && (line.contains("logs") || line.contains("config"));
 
         if contains_path && contains_log_dir {
             // 如果包含系统路径信息，过滤掉
@@ -81,44 +82,46 @@ fn filter_sensitive_info(log_content: &str) -> String {
     // 过滤邮箱地址
     if let Ok(email_regex) = Regex::new(r"[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}") {
         let mut filtered_emails = 0;
-        filtered_content = email_regex.replace_all(&filtered_content, |caps: &regex::Captures| {
-            filtered_emails += 1;
-            let email = &caps[0];
-            if let Some(at_pos) = email.find('@') {
-                let username = &email[..at_pos];
-                let domain = &email[at_pos..];
+        filtered_content = email_regex
+            .replace_all(&filtered_content, |caps: &regex::Captures| {
+                filtered_emails += 1;
+                let email = &caps[0];
+                if let Some(at_pos) = email.find('@') {
+                    let username = &email[..at_pos];
+                    let domain = &email[at_pos..];
 
-                let masked_username = if username.len() <= 2 {
-                    "***".to_string()
-                } else if username.len() <= 3 {
-                    format!("{}***", &username[..1])
+                    let masked_username = if username.len() <= 2 {
+                        "***".to_string()
+                    } else if username.len() <= 3 {
+                        format!("{}***", &username[..1])
+                    } else {
+                        format!("{}***{}", &username[..1], &username[username.len() - 1..])
+                    };
+
+                    format!("{}{}", masked_username, domain)
                 } else {
-                    format!("{}***{}", &username[..1], &username[username.len()-1..])
-                };
-
-                format!("{}{}", masked_username, domain)
-            } else {
-                "***EMAIL_FILTERED***".to_string()
-            }
-        }).to_string();
-
-      }
+                    "***EMAIL_FILTERED***".to_string()
+                }
+            })
+            .to_string();
+    }
 
     // 过滤IP地址
     if let Ok(ip_regex) = Regex::new(r"\b(?:\d{1,3}\.){3}\d{1,3}\b") {
         let mut filtered_ips = 0;
-        filtered_content = ip_regex.replace_all(&filtered_content, |caps: &regex::Captures| {
-            filtered_ips += 1;
-            let ip = &caps[0];
-            let parts: Vec<&str> = ip.split('.').collect();
-            if parts.len() == 4 {
-                format!("{}.***.{}.{}", parts[0], parts[2], parts[3])
-            } else {
-                "***IP_FILTERED***".to_string()
-            }
-        }).to_string();
-
-      }
+        filtered_content = ip_regex
+            .replace_all(&filtered_content, |caps: &regex::Captures| {
+                filtered_ips += 1;
+                let ip = &caps[0];
+                let parts: Vec<&str> = ip.split('.').collect();
+                if parts.len() == 4 {
+                    format!("{}.***.{}.{}", parts[0], parts[2], parts[3])
+                } else {
+                    "***IP_FILTERED***".to_string()
+                }
+            })
+            .to_string();
+    }
 
     // 统计过滤的敏感信息数量
     let filtered_count = filtered_content.matches("***FILTERED***").count();
@@ -152,28 +155,36 @@ pub async fn get_log_content() -> Result<String, String> {
         log::info!("📄 找到日志文件");
 
         // 检查文件大小
-        let metadata = fs::metadata(&log_file)
-            .map_err(|e| format!("获取文件信息失败: {}", e))?;
+        let metadata = fs::metadata(&log_file).map_err(|e| format!("获取文件信息失败: {}", e))?;
 
         let file_size = metadata.len();
-        log::info!("📄 日志文件大小: {} 字节 ({} MB)", file_size, file_size / (1024 * 1024));
+        log::info!(
+            "📄 日志文件大小: {} 字节 ({} MB)",
+            file_size,
+            file_size / (1024 * 1024)
+        );
 
         if file_size > MAX_LOG_FILE_SIZE {
-            return Err(format!("日志文件过大 ({} MB)，超过限制 ({} MB)",
+            return Err(format!(
+                "日志文件过大 ({} MB)，超过限制 ({} MB)",
                 file_size / (1024 * 1024),
-                MAX_LOG_FILE_SIZE / (1024 * 1024)));
+                MAX_LOG_FILE_SIZE / (1024 * 1024)
+            ));
         }
 
         // 读取日志内容
-        let log_content = fs::read_to_string(&log_file)
-            .map_err(|e| format!("读取日志文件失败: {}", e))?;
+        let log_content =
+            fs::read_to_string(&log_file).map_err(|e| format!("读取日志文件失败: {}", e))?;
 
         log::info!("📄 日志内容读取成功，大小: {} 字节", log_content.len());
 
         // 过滤敏感信息
         let filtered_content = filter_sensitive_info(&log_content);
 
-        log::info!("✅ 日志内容读取并过滤完成，处理后大小: {} 字节", filtered_content.len());
+        log::info!(
+            "✅ 日志内容读取并过滤完成，处理后大小: {} 字节",
+            filtered_content.len()
+        );
 
         // 验证过滤后的内容不为空
         if filtered_content.trim().is_empty() {
@@ -204,14 +215,12 @@ pub async fn export_logs() -> Result<String, String> {
         let export_path = desktop.join(default_filename);
 
         // 写入日志内容到桌面
-        fs::write(&export_path, &log_content)
-            .map_err(|e| format!("写入文件失败: {}", e))?;
+        fs::write(&export_path, &log_content).map_err(|e| format!("写入文件失败: {}", e))?;
 
         log::info!("✅ 日志已成功导出");
         Ok("日志导出完成".to_string())
     })
 }
-
 
 /// 获取日志文件信息
 /// 返回日志文件路径、大小等信息，用于前端显示状态
@@ -225,10 +234,10 @@ pub async fn get_log_info() -> Result<LogInfo, String> {
     let log_file = log_dir.join("antigravity-agent.log");
 
     if log_file.exists() {
-        let metadata = fs::metadata(&log_file)
-            .map_err(|e| format!("获取文件信息失败: {}", e))?;
+        let metadata = fs::metadata(&log_file).map_err(|e| format!("获取文件信息失败: {}", e))?;
 
-        let modified = metadata.modified()
+        let modified = metadata
+            .modified()
             .map_err(|e| format!("获取修改时间失败: {}", e))?;
 
         let modified_str = chrono::DateTime::<chrono::Utc>::from(modified)
@@ -273,8 +282,7 @@ pub async fn clear_logs() -> Result<String, String> {
             }
 
             // 清空日志文件
-            fs::write(&log_file, "")
-                .map_err(|e| format!("清空日志文件失败: {}", e))?;
+            fs::write(&log_file, "").map_err(|e| format!("清空日志文件失败: {}", e))?;
 
             log::info!("🗑️ 日志文件已清空");
             Ok("日志文件已清空".to_string())

@@ -1,13 +1,14 @@
+use once_cell::sync::OnceCell;
+use std::sync::{Arc, Mutex};
 /// 系统托盘管理模块
 ///
 /// 使用 Tauri 2.x 内置的系统托盘 API
-
 use tauri::{
-    AppHandle, Manager, tray::TrayIconBuilder,
-    menu::{MenuBuilder, MenuItem}, image::Image
+    image::Image,
+    menu::{MenuBuilder, MenuItem},
+    tray::TrayIconBuilder,
+    AppHandle, Manager,
 };
-use std::sync::{Arc, Mutex};
-use once_cell::sync::OnceCell;
 
 /// 全局系统托盘管理器实例 - 使用 OnceCell 避免未定义行为
 static SYSTEM_TRAY_MANAGER: OnceCell<Arc<Mutex<SystemTrayManager>>> = OnceCell::new();
@@ -80,15 +81,16 @@ impl SystemTrayManager {
                             let rgba_data = rgba_img.into_raw();
 
                             // 创建 Tauri Image
-                            let tauri_image = Image::new_owned(rgba_data, width as u32, height as u32);
+                            let tauri_image =
+                                Image::new_owned(rgba_data, width as u32, height as u32);
                             tray_builder = tray_builder.icon(tauri_image);
                             println!("✅ 托盘图标加载成功，尺寸: {}x{}", width, height);
-                        },
+                        }
                         Err(e) => {
                             println!("⚠️ 图像处理失败: {}", e);
                         }
                     }
-                },
+                }
                 Err(e) => {
                     println!("⚠️ 读取图标文件失败: {}", e);
                 }
@@ -104,31 +106,29 @@ impl SystemTrayManager {
                 println!("✅ 系统托盘图标创建成功");
 
                 // 设置菜单事件监听
-                tray.on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                                println!("📋 菜单: 显示窗口");
-                            }
-                        }
-                        "hide" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.hide();
-                                println!("📋 菜单: 隐藏窗口");
-                            }
-                        }
-                        "quit" => {
-                            println!("📋 菜单: 退出应用");
-                            app.exit(0);
-                        }
-                        _ => {
-                            println!("🖱️ 未知菜单项: {:?}", event.id());
+                tray.on_menu_event(move |app, event| match event.id().as_ref() {
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                            println!("📋 菜单: 显示窗口");
                         }
                     }
+                    "hide" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.hide();
+                            println!("📋 菜单: 隐藏窗口");
+                        }
+                    }
+                    "quit" => {
+                        println!("📋 菜单: 退出应用");
+                        app.exit(0);
+                    }
+                    _ => {
+                        println!("🖱️ 未知菜单项: {:?}", event.id());
+                    }
                 });
-            },
+            }
             Err(e) => {
                 println!("⚠️ 创建系统托盘图标失败: {}", e);
             }

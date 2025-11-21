@@ -17,23 +17,30 @@ macro_rules! log_async_command {
             }
             Err(e) => {
                 let duration = start_time.elapsed();
-                log::error!("❌ 命令失败: {} - 错误: {} (耗时: {:?})", $command_name, e, duration);
+                log::error!(
+                    "❌ 命令失败: {} - 错误: {} (耗时: {:?})",
+                    $command_name,
+                    e,
+                    duration
+                );
                 Err(e)
             }
         }
     }};
 }
 
-
 /// 记录系统启动信息
 pub fn log_system_info() {
     log::info!("🚀 启动 Antigravity Agent v{}", env!("CARGO_PKG_VERSION"));
-    log::info!("🖥️ 系统信息: {} {}", std::env::consts::OS, std::env::consts::ARCH);
+    log::info!(
+        "🖥️ 系统信息: {} {}",
+        std::env::consts::OS,
+        std::env::consts::ARCH
+    );
 
     log::info!("📁 配置目录已初始化");
     log::info!("📁 日志系统已启用");
 }
-
 
 /// 记录数据库操作
 pub fn log_database_operation(operation: &str, table: Option<&str>, success: bool) {

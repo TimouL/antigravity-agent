@@ -29,7 +29,10 @@ pub async fn get_platform_info() -> Result<Value, String> {
 #[tauri::command]
 pub async fn find_antigravity_installations() -> Result<Vec<String>, String> {
     let paths = crate::platform_utils::find_antigravity_installations();
-    Ok(paths.iter().map(|p| p.to_string_lossy().to_string()).collect())
+    Ok(paths
+        .iter()
+        .map(|p| p.to_string_lossy().to_string())
+        .collect())
 }
 
 /// 验证 Antigravity 路径

@@ -1,6 +1,5 @@
 /// 命令模块统一导出
 /// 按功能分组管理所有 Tauri 命令
-
 // 备份相关命令
 pub mod backup_commands;
 
@@ -23,9 +22,9 @@ pub mod tray_commands;
 pub mod logging_commands;
 
 // 重新导出所有命令，保持与 main.rs 的兼容性
-pub use backup_commands::*;
 pub use account_commands::*;
-pub use process_commands::*;
-pub use platform_commands::*;
-pub use tray_commands::*;
+pub use backup_commands::*;
 pub use logging_commands::*;
+pub use platform_commands::*;
+pub use process_commands::*;
+pub use tray_commands::*;

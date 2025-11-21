@@ -12,7 +12,8 @@ pub fn get_antigravity_data_dir() -> Option<PathBuf> {
     match std::env::consts::OS {
         "windows" => {
             // Windows: %APPDATA%\Antigravity\User\globalStorage\
-            dirs::config_dir().map(|path| path.join("Antigravity").join("User").join("globalStorage"))
+            dirs::config_dir()
+                .map(|path| path.join("Antigravity").join("User").join("globalStorage"))
         }
         "macos" => {
             // macOS: 基于 product.json 中的 dataFolderName: ".antigravity" 配置
@@ -22,10 +23,12 @@ pub fn get_antigravity_data_dir() -> Option<PathBuf> {
         "linux" => {
             // Linux: 基于 product.json 中的 dataFolderName: ".antigravity" 配置
             // 优先使用 ~/.config/Antigravity/User/globalStorage/，备用 ~/.local/share/Antigravity/User/globalStorage/
-            dirs::config_dir()  // 优先：~/.config
+            dirs::config_dir() // 优先：~/.config
                 .map(|path| path.join("Antigravity").join("User").join("globalStorage"))
-                .or_else(|| {  // 备用：~/.local/share
-                    dirs::data_dir().map(|path| path.join("Antigravity").join("User").join("globalStorage"))
+                .or_else(|| {
+                    // 备用：~/.local/share
+                    dirs::data_dir()
+                        .map(|path| path.join("Antigravity").join("User").join("globalStorage"))
                 })
         }
         _ => {
@@ -40,8 +43,7 @@ fn ensure_config_dir() -> Result<PathBuf, String> {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(paths::CONFIG_DIR_NAME);
 
-    fs::create_dir_all(&config_dir)
-        .map_err(|e| format!("创建配置目录失败: {e}"))?;
+    fs::create_dir_all(&config_dir).map_err(|e| format!("创建配置目录失败: {e}"))?;
 
     Ok(config_dir)
 }
@@ -62,17 +64,15 @@ fn load_agent_config() -> Result<AgentConfig, String> {
         return Ok(AgentConfig::default());
     }
 
-    let content = fs::read_to_string(&path)
-        .map_err(|e| format!("读取配置失败: {e}"))?;
+    let content = fs::read_to_string(&path).map_err(|e| format!("读取配置失败: {e}"))?;
 
-    serde_json::from_str(&content)
-        .map_err(|e| format!("解析配置失败: {e}"))
+    serde_json::from_str(&content).map_err(|e| format!("解析配置失败: {e}"))
 }
 
 fn save_agent_config(config: &AgentConfig) -> Result<(), String> {
     let path = config_file_path()?;
-    let content = serde_json::to_string_pretty(config)
-        .map_err(|e| format!("序列化配置失败: {e}"))?;
+    let content =
+        serde_json::to_string_pretty(config).map_err(|e| format!("序列化配置失败: {e}"))?;
     fs::write(&path, content).map_err(|e| format!("写入配置失败: {e}"))
 }
 
@@ -145,7 +145,8 @@ fn get_antigravity_windows_paths() -> Vec<PathBuf> {
         // C:\Users\{用户名}\AppData\Local\Programs\Antigravity\Antigravity.exe (最常见)
         antigravity_paths.push(home.join(r"AppData\Local\Programs\Antigravity\Antigravity.exe"));
         // C:\Users\{用户名}\AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe
-        antigravity_paths.push(home.join(r"AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe"));
+        antigravity_paths
+            .push(home.join(r"AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe"));
     }
 
     // 使用 data_local_dir (通常是 C:\Users\{用户名}\AppData\Local)
@@ -154,8 +155,12 @@ fn get_antigravity_windows_paths() -> Vec<PathBuf> {
     }
 
     // 其他可能的位置
-    antigravity_paths.push(PathBuf::from(r"C:\Program Files\Antigravity\Antigravity.exe"));
-    antigravity_paths.push(PathBuf::from(r"C:\Program Files (x86)\Antigravity\Antigravity.exe"));
+    antigravity_paths.push(PathBuf::from(
+        r"C:\Program Files\Antigravity\Antigravity.exe",
+    ));
+    antigravity_paths.push(PathBuf::from(
+        r"C:\Program Files (x86)\Antigravity\Antigravity.exe",
+    ));
 
     antigravity_paths
 }
@@ -238,8 +243,8 @@ pub fn get_all_antigravity_db_paths() -> Vec<PathBuf> {
             if let Ok(entries) = std::fs::read_dir(&install_dir) {
                 for entry in entries.flatten() {
                     let path = entry.path();
-                    if path.is_file() &&
-                       path.file_name().is_some_and(|name| name == "state.vscdb") {
+                    if path.is_file() && path.file_name().is_some_and(|name| name == "state.vscdb")
+                    {
                         db_paths.push(path);
                     }
                 }
@@ -267,7 +272,11 @@ pub fn kill_antigravity_processes() -> Result<String, String> {
                 if output.status.success() {
                     return Ok(format!("已成功关闭Antigravity进程 ({})", process_name));
                 } else {
-                    last_error = format!("关闭进程 {} 失败: {:?}", process_name, String::from_utf8_lossy(&output.stderr));
+                    last_error = format!(
+                        "关闭进程 {} 失败: {:?}",
+                        process_name,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                 }
             }
 
@@ -275,10 +284,7 @@ pub fn kill_antigravity_processes() -> Result<String, String> {
         }
         "macos" | "linux" => {
             // macOS/Linux: 使用pkill命令，尝试多种进程名模式
-            let process_patterns = vec![
-                "Antigravity",
-                "antigravity"
-            ];
+            let process_patterns = vec!["Antigravity", "antigravity"];
             let mut last_error = String::new();
 
             for pattern in process_patterns {
@@ -290,12 +296,16 @@ pub fn kill_antigravity_processes() -> Result<String, String> {
                 if output.status.success() {
                     return Ok(format!("已成功关闭Antigravity进程 (模式: {})", pattern));
                 } else {
-                    last_error = format!("关闭进程失败 (模式: {}): {:?}", pattern, String::from_utf8_lossy(&output.stderr));
+                    last_error = format!(
+                        "关闭进程失败 (模式: {}): {:?}",
+                        pattern,
+                        String::from_utf8_lossy(&output.stderr)
+                    );
                 }
             }
 
             Err(last_error)
         }
-        _ => Err("不支持的操作系统".to_string())
+        _ => Err("不支持的操作系统".to_string()),
     }
 }

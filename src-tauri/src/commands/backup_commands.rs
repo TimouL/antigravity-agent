@@ -1,11 +1,10 @@
-/// 备份相关命令
-/// 负责配置文件和账户的备份、恢复、删除等操作
-
-use tauri::State;
-use std::path::Path;
 use crate::AppState;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::path::Path;
+/// 备份相关命令
+/// 负责配置文件和账户的备份、恢复、删除等操作
+use tauri::State;
 
 /// 备份数据收集结构
 #[derive(Serialize, Deserialize, Debug)]
@@ -34,7 +33,7 @@ pub struct FailedBackup {
 use std::fs;
 use std::io::Write;
 use walkdir::WalkDir;
-use zip::{ZipWriter, write::FileOptions};
+use zip::{write::FileOptions, ZipWriter};
 
 /// 创建配置文件备份
 #[tauri::command]
@@ -64,7 +63,9 @@ pub async fn backup_profile(
     for entry in WalkDir::new(source) {
         let entry = entry.map_err(|e| format!("遍历目录失败: {}", e))?;
         let path = entry.path();
-        let name = path.strip_prefix(source).map_err(|e| format!("处理路径失败: {}", e))?;
+        let name = path
+            .strip_prefix(source)
+            .map_err(|e| format!("处理路径失败: {}", e))?;
 
         if path.is_file() {
             let mut file = fs::File::open(path).map_err(|e| format!("打开文件失败: {}", e))?;
@@ -72,8 +73,10 @@ pub async fn backup_profile(
                 .map_err(|e| format!("添加文件到压缩包失败: {}", e))?;
             let mut buffer = Vec::new();
             use std::io::Read;
-            file.read_to_end(&mut buffer).map_err(|e| format!("读取文件失败: {}", e))?;
-            zip.write_all(&buffer).map_err(|e| format!("写入压缩包失败: {}", e))?;
+            file.read_to_end(&mut buffer)
+                .map_err(|e| format!("读取文件失败: {}", e))?;
+            zip.write_all(&buffer)
+                .map_err(|e| format!("写入压缩包失败: {}", e))?;
         }
     }
 
@@ -116,7 +119,9 @@ pub async fn restore_profile(
     let mut archive = zip::ZipArchive::new(file).map_err(|e| format!("读取压缩文件失败: {}", e))?;
 
     for i in 0..archive.len() {
-        let mut file = archive.by_index(i).map_err(|e| format!("解压文件失败: {}", e))?;
+        let mut file = archive
+            .by_index(i)
+            .map_err(|e| format!("解压文件失败: {}", e))?;
         let out_path = target.join(file.mangled_name());
 
         if file.name().ends_with('/') {
@@ -125,7 +130,8 @@ pub async fn restore_profile(
             if let Some(p) = out_path.parent() {
                 fs::create_dir_all(p).map_err(|e| format!("创建父目录失败: {}", e))?;
             }
-            let mut out_file = fs::File::create(&out_path).map_err(|e| format!("创建文件失败: {}", e))?;
+            let mut out_file =
+                fs::File::create(&out_path).map_err(|e| format!("创建文件失败: {}", e))?;
             std::io::copy(&mut file, &mut out_file).map_err(|e| format!("写入文件失败: {}", e))?;
         }
     }
@@ -142,7 +148,9 @@ pub async fn list_backups(state: State<'_, AppState>) -> Result<Vec<String>, Str
     let antigravity_dir = state.config_dir.join("antigravity-accounts");
 
     if antigravity_dir.exists() {
-        for entry in fs::read_dir(&antigravity_dir).map_err(|e| format!("读取用户目录失败: {}", e))? {
+        for entry in
+            fs::read_dir(&antigravity_dir).map_err(|e| format!("读取用户目录失败: {}", e))?
+        {
             let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
             let path = entry.path();
 
@@ -159,7 +167,9 @@ pub async fn list_backups(state: State<'_, AppState>) -> Result<Vec<String>, Str
 
 /// 收集所有备份文件的完整内容
 #[tauri::command]
-pub async fn collect_backup_contents(state: State<'_, AppState>) -> Result<Vec<BackupData>, String> {
+pub async fn collect_backup_contents(
+    state: State<'_, AppState>,
+) -> Result<Vec<BackupData>, String> {
     let mut backups_with_content = Vec::new();
 
     // 读取Antigravity账户目录中的JSON文件
@@ -169,12 +179,14 @@ pub async fn collect_backup_contents(state: State<'_, AppState>) -> Result<Vec<B
         return Ok(backups_with_content);
     }
 
-    for entry in fs::read_dir(&antigravity_dir).map_err(|e| format!("读取用户目录失败: {}", e))? {
+    for entry in fs::read_dir(&antigravity_dir).map_err(|e| format!("读取用户目录失败: {}", e))?
+    {
         let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
         let path = entry.path();
 
         if path.extension().is_some_and(|ext| ext == "json") {
-            let filename = path.file_name()
+            let filename = path
+                .file_name()
                 .and_then(|name| name.to_str())
                 .map(|s| s.to_string())
                 .unwrap_or_default();
@@ -183,25 +195,23 @@ pub async fn collect_backup_contents(state: State<'_, AppState>) -> Result<Vec<B
                 continue;
             }
 
-            match fs::read_to_string(&path)
-                .map_err(|e| format!("读取文件失败 {}: {}", filename, e)) {
-                Ok(content) => {
-                    match serde_json::from_str::<serde_json::Value>(&content) {
-                        Ok(json_value) => {
-                            backups_with_content.push(BackupData {
-                                filename,
-                                content: json_value,
-                                timestamp: std::time::SystemTime::now()
-                                    .duration_since(std::time::UNIX_EPOCH)
-                                    .unwrap_or_default()
-                                    .as_secs(),
-                            });
-                        }
-                        Err(e) => {
-                            println!("⚠️ 跳过损坏的备份文件 {}: {}", filename, e);
-                        }
+            match fs::read_to_string(&path).map_err(|e| format!("读取文件失败 {}: {}", filename, e))
+            {
+                Ok(content) => match serde_json::from_str::<serde_json::Value>(&content) {
+                    Ok(json_value) => {
+                        backups_with_content.push(BackupData {
+                            filename,
+                            content: json_value,
+                            timestamp: std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_secs(),
+                        });
                     }
-                }
+                    Err(e) => {
+                        println!("⚠️ 跳过损坏的备份文件 {}: {}", filename, e);
+                    }
+                },
                 Err(_) => {
                     println!("⚠️ 跳过无法读取的文件: {}", filename);
                 }
@@ -235,8 +245,12 @@ pub async fn restore_backup_files(
     for backup in backups {
         let file_path = antigravity_dir.join(&backup.filename);
 
-        match fs::write(&file_path, serde_json::to_string_pretty(&backup.content).unwrap_or_default())
-            .map_err(|e| format!("写入文件失败: {}", e)) {
+        match fs::write(
+            &file_path,
+            serde_json::to_string_pretty(&backup.content).unwrap_or_default(),
+        )
+        .map_err(|e| format!("写入文件失败: {}", e))
+        {
             Ok(_) => {
                 results.restored_count += 1;
             }
@@ -254,10 +268,7 @@ pub async fn restore_backup_files(
 
 /// 删除指定备份
 #[tauri::command]
-pub async fn delete_backup(
-    name: String,
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn delete_backup(name: String, state: State<'_, AppState>) -> Result<String, String> {
     // 只删除Antigravity账户JSON文件
     let antigravity_dir = state.config_dir.join("antigravity-accounts");
     let antigravity_file = antigravity_dir.join(format!("{}.json", name));
@@ -272,26 +283,30 @@ pub async fn delete_backup(
 
 /// 清空所有备份
 #[tauri::command]
-pub async fn clear_all_backups(
-    state: State<'_, AppState>,
-) -> Result<String, String> {
+pub async fn clear_all_backups(state: State<'_, AppState>) -> Result<String, String> {
     let antigravity_dir = state.config_dir.join("antigravity-accounts");
 
     if antigravity_dir.exists() {
         // 读取目录中的所有文件
         let mut deleted_count = 0;
-        for entry in fs::read_dir(&antigravity_dir).map_err(|e| format!("读取用户目录失败: {}", e))? {
+        for entry in
+            fs::read_dir(&antigravity_dir).map_err(|e| format!("读取用户目录失败: {}", e))?
+        {
             let entry = entry.map_err(|e| format!("读取目录项失败: {}", e))?;
             let path = entry.path();
 
             // 只删除 JSON 文件
             if path.extension().is_some_and(|ext| ext == "json") {
-                fs::remove_file(&path).map_err(|e| format!("删除文件 {} 失败: {}", path.display(), e))?;
+                fs::remove_file(&path)
+                    .map_err(|e| format!("删除文件 {} 失败: {}", path.display(), e))?;
                 deleted_count += 1;
             }
         }
 
-        Ok(format!("已清空所有用户备份，共删除 {} 个文件", deleted_count))
+        Ok(format!(
+            "已清空所有用户备份，共删除 {} 个文件",
+            deleted_count
+        ))
     } else {
         Ok("用户目录不存在，无需清空".to_string())
     }

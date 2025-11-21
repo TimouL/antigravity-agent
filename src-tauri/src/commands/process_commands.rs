@@ -50,29 +50,32 @@ pub async fn backup_and_restart_antigravity() -> Result<String, String> {
     let app_data = crate::platform_utils::get_antigravity_db_path()
         .ok_or_else(|| "未找到Antigravity数据库路径".to_string())?;
 
-    let conn = crate::Connection::open(&app_data)
-        .map_err(|e| format!("连接数据库失败: {}", e))?;
+    let conn = crate::Connection::open(&app_data).map_err(|e| format!("连接数据库失败: {}", e))?;
 
     // 获取认证信息来提取邮箱
-    let auth_str: String = conn.query_row(
-        "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'",
-        [],
-        |row| row.get(0),
-    ).map_err(|e| format!("查询认证信息失败: {}", e))?;
+    let auth_str: String = conn
+        .query_row(
+            "SELECT value FROM ItemTable WHERE key = 'antigravityAuthStatus'",
+            [],
+            |row| row.get(0),
+        )
+        .map_err(|e| format!("查询认证信息失败: {}", e))?;
 
     drop(conn);
 
-    let auth_data: serde_json::Value = serde_json::from_str(&auth_str)
-        .map_err(|e| format!("解析认证信息失败: {}", e))?;
+    let auth_data: serde_json::Value =
+        serde_json::from_str(&auth_str).map_err(|e| format!("解析认证信息失败: {}", e))?;
 
-    let email = auth_data.get("email")
+    let email = auth_data
+        .get("email")
         .and_then(|v| v.as_str())
         .ok_or_else(|| "认证信息中未找到邮箱".to_string())?;
 
     println!("📧 获取到的邮箱: {}", email);
 
     // 调用通用智能备份函数
-    let (backup_name, is_overwrite) = crate::antigravity_backup::smart_backup_antigravity_account(email)?;
+    let (backup_name, is_overwrite) =
+        crate::antigravity_backup::smart_backup_antigravity_account(email)?;
     let backup_action = if is_overwrite { "更新" } else { "创建" };
     println!("✅ 备份完成 ({}): {}", backup_action, backup_name);
 
@@ -105,8 +108,10 @@ pub async fn backup_and_restart_antigravity() -> Result<String, String> {
         }
     };
 
-    let final_message = format!("{} -> 已{}备份: {} -> 已清除账户数据 -> {}",
-        kill_result, backup_action, backup_name, start_message);
+    let final_message = format!(
+        "{} -> 已{}备份: {} -> 已清除账户数据 -> {}",
+        kill_result, backup_action, backup_name, start_message
+    );
     println!("🎉 所有操作完成: {}", final_message);
 
     Ok(final_message)

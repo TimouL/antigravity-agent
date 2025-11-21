@@ -1,13 +1,13 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
-use rusqlite::Connection;
 use log::LevelFilter;
+use rusqlite::Connection;
 
 /// Antigravity 清理模块
 mod antigravity_cleanup;
@@ -47,47 +47,47 @@ mod commands;
 
 // 重新导出命令函数以保持 invoke_handler 兼容性
 use crate::commands::{
+    backup_and_restart_antigravity,
+    backup_antigravity_current_account,
     backup_profile,
-    restore_profile,
-    list_backups,
-    collect_backup_contents,
-    restore_backup_files,
-    delete_backup,
+    clear_all_antigravity_data,
     clear_all_backups,
+    clear_logs,
+    collect_backup_contents,
+    delete_backup,
+    disable_system_tray,
     // tray_commands
     enable_system_tray,
-    disable_system_tray,
-    minimize_to_tray,
-    restore_from_tray,
-    is_system_tray_enabled,
-    save_system_tray_state,
-    get_system_tray_state,
-    // platform_commands
-    get_platform_info,
-    find_antigravity_installations,
-    validate_antigravity_path,
-    resolve_antigravity_path,
-    save_antigravity_path,
-    is_antigravity_running,
-    // process_commands
-    kill_antigravity,
-    start_antigravity,
-    backup_and_restart_antigravity,
-    // account_commands (前5个零依赖函数)
-    switch_antigravity_account,
-    get_antigravity_accounts,
-    get_current_antigravity_info,
-    backup_antigravity_current_account,
-    clear_all_antigravity_data,
-    // 最后2个有依赖的函数
-    restore_antigravity_account,
-    switch_to_antigravity_account,
     // 日志导出命令
     export_logs,
+    find_antigravity_installations,
+    get_antigravity_accounts,
+    get_current_antigravity_info,
     get_log_content,
     get_log_info,
-    clear_logs,
-    };
+    // platform_commands
+    get_platform_info,
+    get_system_tray_state,
+    is_antigravity_running,
+    is_system_tray_enabled,
+    // process_commands
+    kill_antigravity,
+    list_backups,
+    minimize_to_tray,
+    resolve_antigravity_path,
+    // 最后2个有依赖的函数
+    restore_antigravity_account,
+    restore_backup_files,
+    restore_from_tray,
+    restore_profile,
+    save_antigravity_path,
+    save_system_tray_state,
+    start_antigravity,
+    // account_commands (前5个零依赖函数)
+    switch_antigravity_account,
+    switch_to_antigravity_account,
+    validate_antigravity_path,
+};
 
 #[derive(Debug, Serialize, Deserialize)]
 struct ProfileInfo {
@@ -105,7 +105,7 @@ struct AntigravityAccount {
     name: String,
     email: String,
     api_key: String,
-    profile_url: String, // Base64 编码的头像
+    profile_url: String,   // Base64 编码的头像
     user_settings: String, // 编码后的用户设置
     created_at: String,
     last_switched: String,
@@ -130,8 +130,11 @@ impl Default for AppState {
                 .map(|appdata| PathBuf::from(appdata).join(".antigravity-agent"))
                 .or_else(|| {
                     // 备用方案：通过用户主目录构建 AppData\Roaming 路径
-                    dirs::home_dir()
-                        .map(|home| home.join("AppData").join("Roaming").join(".antigravity-agent"))
+                    dirs::home_dir().map(|home| {
+                        home.join("AppData")
+                            .join("Roaming")
+                            .join(".antigravity-agent")
+                    })
                 })
                 .or_else(|| {
                     // 最后备用：使用系统标准配置目录
@@ -180,10 +183,8 @@ fn main() {
                 .join("logs");
             fs::create_dir_all(&log_dir).ok();
 
-            simple_logging::log_to_file(
-                log_dir.join("antigravity-agent.log"),
-                LevelFilter::Info,
-            ).ok();
+            simple_logging::log_to_file(log_dir.join("antigravity-agent.log"), LevelFilter::Info)
+                .ok();
             // 初始化窗口事件处理器
             if let Err(e) = window_event_handler::init_window_event_handler(app) {
                 eprintln!("⚠️  窗口事件处理器初始化失败: {}", e);
@@ -192,7 +193,7 @@ fn main() {
             // 初始化系统托盘管理器
             match system_tray::SystemTrayManager::initialize_global(app.handle()) {
                 Ok(_) => println!("✅ 系统托盘管理器初始化成功"),
-                Err(e) => println!("⚠️ 系统托盘管理器初始化失败: {}", e)
+                Err(e) => println!("⚠️ 系统托盘管理器初始化失败: {}", e),
             }
 
             Ok(())
