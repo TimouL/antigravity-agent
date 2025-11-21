@@ -7,11 +7,11 @@ import { VibratingButton } from './VibratingButton';
 const LOG_FILE_FILTERS = [
   {
     name: '日志文件',
-    extensions: ['log'] as const
+    extensions: ['log'] as string[]
   },
   {
     name: '所有文件',
-    extensions: ['*'] as const
+    extensions: ['*'] as string[]
   }
 ];
 

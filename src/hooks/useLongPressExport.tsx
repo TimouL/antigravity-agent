@@ -9,11 +9,11 @@ const VIBRATION_START_DELAY = 500; // 震动开始延迟（毫秒）
 const LOG_FILE_FILTERS = [
   {
     name: '日志文件',
-    extensions: ['log'] as const
+    extensions: ['log'] as string[]
   },
   {
     name: '所有文件',
-    extensions: ['*'] as const
+    extensions: ['*'] as string[]
   }
 ];
 
@@ -23,7 +23,7 @@ const LOG_FILE_FILTERS = [
  * 处理长按事件和日志导出逻辑
  */
 export const useLongPressExport = () => {
-  const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startTimeRef = useRef<number>(0);
 
   /**

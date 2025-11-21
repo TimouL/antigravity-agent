@@ -33,14 +33,25 @@ pub fn start_antigravity() -> Result<String, String> {
 /// 在 Windows 平台启动 Antigravity
 fn start_antigravity_windows() -> Result<String, String> {
     let mut errors = Vec::new();
-    let antigravity_paths = get_antigravity_windows_paths();
+    let mut tried_paths: Vec<PathBuf> = Vec::new();
 
-    // 尝试所有推测的路径
-    for path in &antigravity_paths {
+    if let Some(resolved) = crate::platform_utils::resolve_antigravity_exe_windows() {
+        eprintln!("优先使用持久化/自动解析路径: {}", resolved.display());
+        tried_paths.push(resolved);
+    }
+
+    for path in get_antigravity_windows_paths() {
+        if !tried_paths.iter().any(|p| p == &path) {
+            tried_paths.push(path);
+        }
+    }
+
+    for path in &tried_paths {
         if path.exists() {
             eprintln!("找到并尝试启动: {}", path.display());
             match try_start_from_path(path) {
                 Ok(_) => {
+                    let _ = crate::platform_utils::persist_antigravity_path(path);
                     return Ok(format!("Antigravity启动成功 ({})", path.display()));
                 }
                 Err(e) => {

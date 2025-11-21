@@ -1,5 +1,11 @@
-use std::path::PathBuf;
+use std::fs;
+use std::path::{Path, PathBuf};
 use std::process::Command;
+
+use serde::{Deserialize, Serialize};
+use sysinfo::{ProcessExt, System, SystemExt};
+
+use crate::constants::paths;
 
 /// 获取Antigravity应用数据目录（跨平台）
 pub fn get_antigravity_data_dir() -> Option<PathBuf> {
@@ -29,6 +35,78 @@ pub fn get_antigravity_data_dir() -> Option<PathBuf> {
     }
 }
 
+fn ensure_config_dir() -> Result<PathBuf, String> {
+    let config_dir = dirs::config_dir()
+        .unwrap_or_else(|| PathBuf::from("."))
+        .join(paths::CONFIG_DIR_NAME);
+
+    fs::create_dir_all(&config_dir)
+        .map_err(|e| format!("创建配置目录失败: {e}"))?;
+
+    Ok(config_dir)
+}
+
+fn config_file_path() -> Result<PathBuf, String> {
+    Ok(ensure_config_dir()?.join("config.json"))
+}
+
+#[derive(Debug, Serialize, Deserialize, Default)]
+struct AgentConfig {
+    #[serde(rename = "antigravityPath")]
+    antigravity_path: Option<String>,
+}
+
+fn load_agent_config() -> Result<AgentConfig, String> {
+    let path = config_file_path()?;
+    if !path.exists() {
+        return Ok(AgentConfig::default());
+    }
+
+    let content = fs::read_to_string(&path)
+        .map_err(|e| format!("读取配置失败: {e}"))?;
+
+    serde_json::from_str(&content)
+        .map_err(|e| format!("解析配置失败: {e}"))
+}
+
+fn save_agent_config(config: &AgentConfig) -> Result<(), String> {
+    let path = config_file_path()?;
+    let content = serde_json::to_string_pretty(config)
+        .map_err(|e| format!("序列化配置失败: {e}"))?;
+    fs::write(&path, content).map_err(|e| format!("写入配置失败: {e}"))
+}
+
+fn validate_antigravity_exe(path: &Path) -> bool {
+    path.is_file()
+}
+
+fn load_persisted_antigravity_path() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+
+    load_agent_config().ok().and_then(|cfg| {
+        cfg.antigravity_path
+            .as_deref()
+            .map(PathBuf::from)
+            .filter(|p| validate_antigravity_exe(p))
+    })
+}
+
+pub fn persist_antigravity_path(path: &Path) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+
+    if !validate_antigravity_exe(path) {
+        return Err("无效的 Antigravity 可执行文件路径".to_string());
+    }
+
+    let mut config = load_agent_config().unwrap_or_default();
+    config.antigravity_path = Some(path.to_string_lossy().to_string());
+    save_agent_config(&config)
+}
+
 /// 获取Antigravity状态数据库文件路径
 pub fn get_antigravity_db_path() -> Option<PathBuf> {
     get_antigravity_data_dir().map(|dir| dir.join("state.vscdb"))
@@ -56,6 +134,68 @@ pub fn find_antigravity_installations() -> Vec<PathBuf> {
     }
 
     possible_paths
+}
+
+pub fn find_running_antigravity_exes() -> Vec<PathBuf> {
+    if !cfg!(windows) {
+        return Vec::new();
+    }
+
+    let mut system = System::new();
+    system.refresh_processes();
+
+    let mut paths = Vec::new();
+    for process in system.processes_by_name("Antigravity.exe") {
+        if let Some(exe) = process.exe() {
+            let path = exe.to_path_buf();
+            if validate_antigravity_exe(&path) {
+                paths.push(path);
+            }
+        }
+    }
+
+    for process in system.processes_by_name("Antigravity") {
+        if let Some(exe) = process.exe() {
+            let path = exe.to_path_buf();
+            if validate_antigravity_exe(&path) {
+                paths.push(path);
+            }
+        }
+    }
+
+    paths
+}
+
+pub fn resolve_antigravity_exe_windows() -> Option<PathBuf> {
+    if !cfg!(windows) {
+        return None;
+    }
+
+    if let Some(persisted) = load_persisted_antigravity_path() {
+        return Some(persisted);
+    }
+
+    for path in get_antigravity_windows_paths() {
+        if validate_antigravity_exe(&path) {
+            let _ = persist_antigravity_path(&path);
+            return Some(path);
+        }
+    }
+
+    for path in find_running_antigravity_exes() {
+        let _ = persist_antigravity_path(&path);
+        return Some(path);
+    }
+
+    None
+}
+
+pub fn is_antigravity_process_running() -> bool {
+    if !cfg!(windows) {
+        return false;
+    }
+
+    !find_running_antigravity_exes().is_empty()
 }
 
 /// 获取所有可能的Antigravity数据库路径

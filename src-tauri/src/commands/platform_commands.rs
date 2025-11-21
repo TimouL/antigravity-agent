@@ -40,4 +40,36 @@ pub async fn validate_antigravity_path(path: String) -> Result<bool, String> {
     Ok(db_path.exists() && db_path.is_file())
 }
 
+/// 解析 Antigravity 可执行路径（仅 Windows）
+#[tauri::command]
+pub async fn resolve_antigravity_path() -> Result<Option<String>, String> {
+    if !cfg!(windows) {
+        return Ok(None);
+    }
+
+    Ok(crate::platform_utils::resolve_antigravity_exe_windows()
+        .map(|p| p.to_string_lossy().to_string()))
+}
+
+/// 保存用户选择的 Antigravity 路径（仅 Windows）
+#[tauri::command]
+pub async fn save_antigravity_path(path: String) -> Result<(), String> {
+    if !cfg!(windows) {
+        return Ok(());
+    }
+
+    let path_buf = std::path::PathBuf::from(path);
+    crate::platform_utils::persist_antigravity_path(&path_buf)
+}
+
+/// 检查 Antigravity 进程是否运行（仅 Windows）
+#[tauri::command]
+pub async fn is_antigravity_running() -> Result<bool, String> {
+    if !cfg!(windows) {
+        return Ok(false);
+    }
+
+    Ok(crate::platform_utils::is_antigravity_process_running())
+}
+
 // 命令函数将在后续步骤中移动到这里

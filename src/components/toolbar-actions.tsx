@@ -117,6 +117,12 @@ const ToolbarActions: React.FC<ToolbarActionsProps> = ({
           console.log('📤 发送状态更新: 正在备份当前用户并注销...');
           showStatus('正在备份当前用户并注销...');
 
+          const ready = await AntigravityService.ensureAntigravityPath(showStatus);
+          if (!ready) {
+            console.log('⏹️ 终止：未满足路径或进程条件');
+            return;
+          }
+
           console.log('🔄 调用 AntigravityService.backupAndRestartAntigravity');
           await AntigravityService.backupAndRestartAntigravity(showStatus);
 

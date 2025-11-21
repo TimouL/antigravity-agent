@@ -141,3 +141,6 @@ CLAUDE.md
 nul
 debug_log.txt
 db
+AGENTS.md
+task/
+.serena/

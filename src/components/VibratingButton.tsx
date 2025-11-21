@@ -27,7 +27,7 @@ export const VibratingButton: React.FC<VibratingButtonProps> = ({
   const [isVibrating, setIsVibrating] = useState(false);
   const startTimeRef = useRef<number>(0);
   const animationFrameRef = useRef<number | null>(null);
-  const vibrationIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const vibrationIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 清理所有定时器和动画
   const cleanup = () => {
