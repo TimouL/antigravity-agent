@@ -115,7 +115,23 @@ jobs:
             ${{ github.workspace }}/src-tauri/target/${{ matrix.target }}/release/antigravity-agent
           retention-days: 30
         continue-on-error: true
-      # macOS dmg 日志输出暂时禁用（仅保留 win64）
+
+      - name: Create portable zip (win64)
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          $exe = "src-tauri/target/${{ matrix.target }}/release/antigravity-agent.exe"
+          if (-not (Test-Path $exe)) { throw "missing exe: $exe" }
+          $zip = "antigravity-agent-x86_64-portable.zip"
+          if (Test-Path $zip) { Remove-Item $zip }
+          Compress-Archive -Path $exe -DestinationPath $zip
+
+      - name: Upload portable zip to release
+        if: matrix.platform == 'windows-latest'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload ${{ github.ref_name }} antigravity-agent-x86_64-portable.zip --clobber
 
   create-release:
     needs: build
