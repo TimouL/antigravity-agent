@@ -94,12 +94,13 @@ jobs:
         run: |
           gh release delete ${{ github.ref_name }} -y || true
 
-      - name: Build the app
+      - name: Build the app (verbose)
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_LOG: trace
         with:
           tagName: ${{ github.ref_name }}
           releaseName: 'Antigravity Agent v__VERSION__'
@@ -108,7 +109,7 @@ jobs:
           prerelease: false
           includeDebug: false
           includeRelease: true
-          args: --target ${{ matrix.target }}
+          args: --target ${{ matrix.target }} --verbose
 
       - name: Upload standalone binary
         uses: actions/upload-artifact@v4
@@ -119,6 +120,19 @@ jobs:
             ${{ github.workspace }}/src-tauri/target/${{ matrix.target }}/release/antigravity-agent
           retention-days: 30
         continue-on-error: true
+
+      - name: Show bundle_dmg log on macOS x86_64
+        if: matrix.target == 'x86_64-apple-darwin'
+        run: |
+          set -e
+          LOG_DIR="${{ github.workspace }}/src-tauri/target/${{ matrix.target }}/release/bundle/dmg"
+          ls -lah "$LOG_DIR" || true
+          if [ -f "$LOG_DIR/bundle_dmg.sh" ]; then
+            echo "--- bundle_dmg.sh content ---"
+            sed -n '1,200p' "$LOG_DIR/bundle_dmg.sh"
+            echo "--- rerun with trace ---"
+            sh -x "$LOG_DIR/bundle_dmg.sh" || true
+          fi
 
   create-release:
     needs: build
