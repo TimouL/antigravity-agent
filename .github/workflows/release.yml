@@ -87,6 +87,13 @@ jobs:
             ${{ runner.os }}-tauri-${{ hashFiles('**/Cargo.lock', '**/package-lock.json') }}-
             ${{ runner.os }}-tauri-
 
+      - name: Clean existing release (once per tag)
+        if: matrix.platform == 'ubuntu-22.04'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release delete ${{ github.ref_name }} -y || true
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
