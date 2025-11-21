@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use serde::{Deserialize, Serialize};
-use sysinfo::{ProcessExt, System, SystemExt};
+use sysinfo::System;
 
 use crate::constants::paths;
 
@@ -134,6 +134,30 @@ pub fn find_antigravity_installations() -> Vec<PathBuf> {
     }
 
     possible_paths
+}
+
+/// 获取 Windows 平台下 Antigravity 的可能安装路径
+fn get_antigravity_windows_paths() -> Vec<PathBuf> {
+    let mut antigravity_paths = Vec::new();
+
+    // 基于用户主目录构建可能的路径
+    if let Some(home) = dirs::home_dir() {
+        // C:\Users\{用户名}\AppData\Local\Programs\Antigravity\Antigravity.exe (最常见)
+        antigravity_paths.push(home.join(r"AppData\Local\Programs\Antigravity\Antigravity.exe"));
+        // C:\Users\{用户名}\AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe
+        antigravity_paths.push(home.join(r"AppData\Roaming\Local\Programs\Antigravity\Antigravity.exe"));
+    }
+
+    // 使用 data_local_dir (通常是 C:\Users\{用户名}\AppData\Local)
+    if let Some(local_data) = dirs::data_local_dir() {
+        antigravity_paths.push(local_data.join(r"Programs\Antigravity\Antigravity.exe"));
+    }
+
+    // 其他可能的位置
+    antigravity_paths.push(PathBuf::from(r"C:\Program Files\Antigravity\Antigravity.exe"));
+    antigravity_paths.push(PathBuf::from(r"C:\Program Files (x86)\Antigravity\Antigravity.exe"));
+
+    antigravity_paths
 }
 
 pub fn find_running_antigravity_exes() -> Vec<PathBuf> {
